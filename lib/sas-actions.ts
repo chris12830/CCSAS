@@ -1,0 +1,95 @@
+import {z} from "zod";
+import {Network, Supplier, Campaign, Country, Audience, POLICY_VERSION, today, categories, placements} from "./sas-model";
+
+const id=z.string().min(1).max(100), name=z.string().trim().min(2).max(80);
+const countries=z.array(z.enum(["CA","US"])).min(1).max(2);
+const url=z.string().trim().max(1000).refine(v=>{try{return ["http:","https:"].includes(new URL(v).protocol)}catch{return false}},"Enter a complete http or https website address.");
+const optionalUrl=z.union([url,z.literal("")]);
+const date=z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(v=>!Number.isNaN(Date.parse(v))&&new Date(v).toISOString().slice(0,10)===v,"Enter a valid date.");
+const supplierSchema=z.object({id:id.optional(),name,contact:name,email:z.string().trim().email().max(200),website:optionalUrl,category:z.string().refine(v=>categories.includes(v)),countries,packageId:id,currency:z.enum(["CAD","USD"]),accepted:z.literal(true),sample:z.boolean().optional()});
+const campaignSchema=z.object({id:id.optional(),supplierId:id,name,text:z.string().trim().min(5).max(120),url,country:z.enum(["CA","US"]),currency:z.enum(["CAD","USD"]),appIds:z.array(id).min(1),placement:z.string().refine(v=>placements.includes(v)),region:z.string().trim().max(80),start:date,end:date,submit:z.boolean()});
+export type Actor={userId:string;email:string;owner:boolean};
+export function applyAction(previous:Network, action:string, input:unknown, actor:Actor):Network{
+  const state=structuredClone(previous),now=new Date().toISOString();
+  if(!actor.owner&&!["save_supplier","save_campaign"].includes(action))throw new Error("Only the network owner can perform this action.");
+  let message="";
+  switch(action){
+    case "save_app":{
+      const v=z.object({id:id.optional(),name,short:z.string().min(1).max(3),domain:z.string().trim().min(2).max(150),color:z.string().regex(/^#[0-9a-fA-F]{6}$/),enabled:z.boolean(),countries,packages:z.array(id).min(1),audiences:z.array(z.enum(["owner","admin","staff"])).min(1),placements:z.array(z.string()).min(1)}).parse(input);
+      if(v.packages.some(p=>!state.packages.some(x=>x.id===p))||v.placements.some(p=>!placements.includes(p)))throw new Error("Choose existing packages and placements.");
+      const existing=state.apps.find(a=>a.id===v.id);
+      if(v.id&&!existing)throw new Error("Application not found.");
+      const next={...existing,...v,id:v.id??crypto.randomUUID()};
+      if(existing)state.apps=state.apps.map(a=>a.id===next.id?next:a);else state.apps.push(next);
+      message=`${v.name} advertising settings saved.`;break;
+    }
+    case "save_package":{
+      const v=z.object({id,name,description:z.string().trim().min(5).max(200),maxApps:z.number().int().min(1).max(99),cad:z.number().min(0).max(10000),usd:z.number().min(0).max(10000),enabled:z.boolean(),checkoutCad:optionalUrl,checkoutUsd:optionalUrl}).parse(input);
+      if(!state.packages.some(p=>p.id===v.id))throw new Error("Package not found.");
+      state.packages=state.packages.map(p=>p.id===v.id?v:p); message=`${v.name} package updated.`;break;
+    }
+    case "save_supplier":{
+      const v=supplierSchema.parse(input),existing=state.suppliers.find(s=>s.id===v.id);
+      if(v.id&&!existing)throw new Error("Supplier not found.");
+      if(!actor.owner&&existing&&existing.userId!==actor.userId&&existing.email.toLowerCase()!==actor.email.toLowerCase())throw new Error("You cannot edit another supplier.");
+      const email=actor.owner?v.email:actor.email;
+      if(state.suppliers.some(s=>s.id!==v.id&&s.email.toLowerCase()===email.toLowerCase()))throw new Error("This email already has a supplier application.");
+      if(!state.packages.some(p=>p.id===v.packageId&&p.enabled))throw new Error("Choose an available package.");
+      const changedPackage=existing&&existing.packageId!==v.packageId;
+      const next:Supplier={id:v.id??crypto.randomUUID(),name:v.name,contact:v.contact,email,website:v.website,category:v.category,countries:v.countries,packageId:v.packageId,currency:v.currency,
+        status:existing?.status??"pending",billingStatus:changedPackage?"unpaid":existing?.billingStatus??"unpaid",paidUntil:changedPackage?"":existing?.paidUntil??"",sample:existing?.sample??(actor.owner&&v.sample===true),userId:existing?.userId??(!actor.owner?actor.userId:undefined),policyAcceptedAt:existing?.policyVersion===state.settings.policyVersion?existing.policyAcceptedAt:now,policyVersion:state.settings.policyVersion,policyText:state.settings.policy,createdAt:existing?.createdAt??now};
+      if(existing)state.suppliers=state.suppliers.map(s=>s.id===next.id?next:s);else state.suppliers.push(next);
+      message=`${next.name} supplier application ${existing?"updated":"received"}.`;break;
+    }
+    case "supplier_status":{
+      const v=z.object({id,status:z.enum(["approved","pending","suspended","rejected"])}).parse(input),s=state.suppliers.find(s=>s.id===v.id);
+      if(!s)throw new Error("Supplier not found.");
+      if(v.status==="approved"&&!s.policyAcceptedAt)throw new Error("Supplier policy acceptance is required.");
+      s.status=v.status;message=`${s.name} ${v.status}.`;break;
+    }
+    case "save_campaign":{
+      const v=campaignSchema.parse(input),s=state.suppliers.find(s=>s.id===v.supplierId),existing=state.campaigns.find(c=>c.id===v.id),p=state.packages.find(p=>p.id===s?.packageId);
+      if(!s||!p)throw new Error("Select an existing supplier.");
+      if(v.id&&!existing)throw new Error("Campaign not found.");
+      if(existing&&existing.supplierId!==s.id)throw new Error("A campaign's supplier cannot be changed.");
+      if(!actor.owner&&s.userId!==actor.userId&&s.email.toLowerCase()!==actor.email.toLowerCase())throw new Error("You cannot create campaigns for another supplier.");
+      if(s.status==="suspended"||s.status==="rejected")throw new Error("This supplier account cannot submit campaigns.");
+      if(v.text.length>state.settings.maxCopy)throw new Error(`Ad copy is limited to ${state.settings.maxCopy} characters.`);
+      if(!s.countries.includes(v.country))throw new Error("This supplier does not serve the selected country.");
+      if((v.country==="CA"&&v.currency!=="CAD")||(v.country==="US"&&v.currency!=="USD"))throw new Error("Use CAD for Canada and USD for USA offers.");
+      if(v.end<v.start)throw new Error("The campaign end date must follow its start date.");
+      const appIds=[...new Set(v.appIds)];
+      if(appIds.length>p.maxApps)throw new Error(`This package allows up to ${p.maxApps} applications.`);
+      if(appIds.some(id=>!state.apps.some(a=>a.id===id&&a.enabled&&a.packages.includes(p.id)&&a.countries.includes(v.country)&&a.placements.includes(v.placement))))throw new Error("One or more applications do not allow this advertising placement or package.");
+      const next:Campaign={id:v.id??crypto.randomUUID(),supplierId:s.id,name:v.name,text:v.text,url:v.url,country:v.country,currency:v.currency,appIds,placement:v.placement,region:v.region,start:v.start,end:v.end,status:v.submit?"review":"draft",sample:s.sample,createdAt:existing?.createdAt??now};
+      if(existing)state.campaigns=state.campaigns.map(c=>c.id===next.id?next:c);else state.campaigns.push(next);
+      message=`${next.name} ${v.submit?"submitted for review":"saved as a draft"}.`;break;
+    }
+    case "campaign_status":{
+      const v=z.object({id,status:z.enum(["published","paused","rejected","review"])}).parse(input),c=state.campaigns.find(c=>c.id===v.id),s=state.suppliers.find(s=>s.id===c?.supplierId);
+      if(!c||!s)throw new Error("Campaign not found.");
+      if(v.status==="published"&&(s.status!=="approved"||c.text.length>state.settings.maxCopy))throw new Error("Approve the supplier and check the ad copy limit before publishing.");
+      c.status=v.status;message=`${c.name} ${v.status==="published"?"approved":v.status}.`;break;
+    }
+    case "record_payment":{
+      const v=z.object({supplierId:id,amount:z.number().positive().max(1000000),currency:z.enum(["CAD","USD"]),reference:z.string().trim().min(3).max(150),date,paidUntil:date}).parse(input),s=state.suppliers.find(s=>s.id===v.supplierId);
+      if(!s)throw new Error("Supplier not found.");
+      if(v.paidUntil<v.date||v.paidUntil<today())throw new Error("Choose a current or future paid-through date.");
+      if(state.payments.some(p=>p.reference===v.reference&&p.supplierId===s.id))throw new Error("This payment reference is already recorded.");
+      state.payments.unshift({...v,id:crypto.randomUUID(),sample:s.sample});
+      s.billingStatus="active";s.paidUntil=v.paidUntil;message=`Payment recorded for ${s.name}.`;break;
+    }
+    case "billing_status":{
+      const v=z.object({id,status:z.enum(["unpaid","past_due"])}).parse(input),s=state.suppliers.find(s=>s.id===v.id);
+      if(!s)throw new Error("Supplier not found.");s.billingStatus=v.status;message=`${s.name} billing marked ${v.status.replace("_"," ")}.`;break;
+    }
+    case "save_settings":{
+      const v=z.object({name,maxCopy:z.number().int().min(60).max(120),speed:z.number().int().min(20).max(80),paused:z.boolean(),showSamples:z.boolean(),policy:z.string().trim().min(50).max(5000)}).parse(input);
+      state.settings={...v,policyVersion:v.policy===previous.settings.policy?previous.settings.policyVersion:`${today()}.${crypto.randomUUID().slice(0,8)}`};
+      message="Network settings saved.";break;
+    }
+    default:throw new Error("Unknown action.");
+  }
+  state.activity.unshift({id:crypto.randomUUID(),text:message,date:now});state.activity=state.activity.slice(0,100);
+  return state;
+}
