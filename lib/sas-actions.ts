@@ -78,7 +78,7 @@ export function applyAction(previous:Network, action:string, input:unknown, acto
       const v=z.object({supplierId:id,amount:z.number().positive().max(1000000).refine(v=>Math.abs(v*100-Math.round(v*100))<0.000001,"Payment amounts must use whole currency cents."),currency:z.enum(["CAD","USD"]),reference:z.string().trim().min(3).max(150),date,paidUntil:date}).parse(input),s=state.suppliers.find(s=>s.id===v.supplierId);
       if(!s)throw new Error("Supplier not found.");
       if(v.paidUntil<v.date||v.paidUntil<today())throw new Error("Choose a current or future paid-through date.");
-      if(state.payments.some(p=>p.reference===v.reference&&p.supplierId===s.id))throw new Error("This payment reference is already recorded.");
+      if(state.payments.some(p=>p.reference===v.reference))throw new Error("This payment reference is already recorded.");
       state.payments.unshift({...v,id:crypto.randomUUID(),sample:s.sample});
       s.billingStatus="active";s.paidUntil=v.paidUntil;message=`Payment recorded for ${s.name}.`;break;
     }

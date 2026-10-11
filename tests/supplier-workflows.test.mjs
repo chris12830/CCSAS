@@ -30,3 +30,9 @@ test("recorded recurring receipts advance once and retain their terms",()=>{let 
 test("calendar recurrence clamps month ends and leap years",()=>{assert.equal(nextRecurringDate("2026-01-31","monthly"),"2026-02-28");assert.equal(nextRecurringDate("2024-02-29","yearly"),"2025-02-28");});
 test("non-integral cents, invalid dates and unknown actions are rejected",()=>{assert.throws(()=>act(accept(),"report_sale",{reference:"fractional",grossCents:1.5}),/invalid/);assert.throws(()=>act(accept(),"recurring",{reference:"service",title:"Service",feeCents:100,cadence:"monthly",startsOn:"2026-02-30"}),/invalid/);assert.throws(()=>act(fixture(),"fabricate",{}),/Unknown/);});
 test("messages are scoped and only recipient read status changes",()=>{let value=act(fixture(),"message",{body:"Supplier message"});value=act(value,"message",{body:"Owner response"},owner);value=act(value,"read_messages",{});assert.equal(value.workspace.messages[0].readAt,"");assert.ok(value.workspace.messages[1].readAt);assert.throws(()=>act(value,"message",{body:"Secret"},other),/not yours/);});
+
+test("imported recurring timestamp prevents early receipts on the same calendar date",()=>{
+ let value=act(accept(),"recurring",{reference:"service-1",title:"Cleaning",feeCents:10000,cadence:"monthly",startsOn:"2026-10-11"});
+ value.workspace.recurring[0].sourceNextDueAt="2026-10-11T20:00:00Z";
+ assert.throws(()=>act(value,"recurring_payment",{serviceId:value.workspace.recurring[0].id,reference:"too-early"}),/not due/);
+});

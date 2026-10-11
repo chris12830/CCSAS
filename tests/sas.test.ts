@@ -64,3 +64,15 @@ test("policy revisions retain prior accepted text until renewed and credentials 
  assert.notEqual(next.settings.policyVersion,old.settings.policyVersion);assert.equal(next.suppliers[0].policyText,old.settings.policy);
  next.apps[0].integrationHash="secret-digest";const safe=publicState(next);assert.equal(safe.apps[0].integrationHash,undefined);assert.equal(safe.apps[0].hasKey,true);
 });
+
+test("administrator-created profiles cannot manufacture supplier consent",()=>{
+ const state=initialNetwork();
+ const next=applyAction(state,"save_supplier",{name:"New Company",contact:"Company Representative",email:"new-company@example.test",website:"https://example.test",category:"Software & services",countries:["CA"],packageId:"single",currency:"CAD",accepted:true},owner);
+ const created=next.suppliers.at(-1)!;assert.equal(created.policyAcceptedAt,"");assert.equal(created.policyText,"");assert.throws(()=>applyAction(next,"supplier_status",{id:created.id,status:"approved"},owner),/acceptance/);
+});
+test("matching email cannot bypass a bound supplier identity through legacy actions",()=>{
+ const state=realNetwork(),existing=state.suppliers[0];existing.userId="bound-user";
+ const actor={userId:"other-user",email:existing.email,owner:false};
+ assert.throws(()=>applyAction(state,"save_supplier",{...existing,accepted:true,policyVersion:state.settings.policyVersion,policyText:state.settings.policy},actor),/another supplier/);
+ assert.throws(()=>applyAction(state,"save_campaign",{...state.campaigns[0],submit:true},actor),/another supplier/);
+});
