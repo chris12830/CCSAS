@@ -53,7 +53,7 @@
     "typecheck": "passed",
     "build": "passed",
     "commands": [
-      "pnpm test",
+      "node --experimental-transform-types --test tests/*.test.mjs",
       "pnpm exec tsc --noEmit",
       "pnpm run build"
     ]

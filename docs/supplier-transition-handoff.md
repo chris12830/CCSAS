@@ -27,7 +27,7 @@ Both development implementations pass automated checks on these exact source com
 | CCSAS | `4349927c943cca9bd51616fb78d31580fad6db60` | 58 passed: 21 workflow, 14 migration, 4 SQLite persistence, 11 SAS regression and 8 scoped API checks | Passed / passed | [Run 38169169107](https://github.com/chris12830/CCSAS/actions/runs/38169169107) |
 | CCON | `59ac1cd6a6aa5b81caa230df2fca7fd0644d9284` | 126 passed: 118 existing regressions and 8 transition checks | Passed / passed | [Run 38168596484](https://github.com/chris12830/child-care-owners-network/actions/runs/38168596484) |
 
-SQLite checks apply actual repository migrations and exercise transaction rollback, concurrent-write isolation, scoped permissions, receipt duplication, export privacy and activation/rollback guards. Authentication and Cloudflare bindings are test substitutes. These results do not prove real signed-in authentication, browser journeys, provider operation, staging deployment or production reconciliation.
+SQLite checks apply actual repository migrations and exercise transaction rollback, stale-write isolation, scoped permissions, receipt duplication, export privacy and activation/rollback guards. Authentication and Cloudflare bindings are test substitutes. These results do not prove real signed-in authentication, browser journeys, provider operation, staging deployment or production reconciliation.
 
 Review the [CCSAS draft pull request](https://github.com/chris12830/CCSAS/pull/1) and [CCON draft pull request](https://github.com/chris12830/child-care-owners-network/pull/1). Neither is merged. Evidence-only follow-up commits leave the validated application files unchanged. See [pinned validation evidence](supplier-transition-validation.json) for commands, scope and limits.
 
