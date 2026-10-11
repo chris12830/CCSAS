@@ -1,19 +1,86 @@
 {
   "date": "2026-10-11",
-  "status": "final branch checks pending",
+  "status": "development checks passed; full supplier transfer and production cutover unfinished",
   "production_migration": false,
   "site_deployed": false,
   "main_merge": false,
-  "first_ccsas_ci": {
-    "commit": "e5c71e850013c2b32881fc563ae126e6c5f216c0",
-    "run_id": 38167271625,
-    "url": "https://github.com/chris12830/CCSAS/actions/runs/38167271625",
-    "domain_tests": 20,
-    "original_regressions": 9,
+  "ccsas": {
+    "repository": "chris12830/CCSAS",
+    "branch": "feature/ccon-portals-integration",
+    "code_commit": "4349927c943cca9bd51616fb78d31580fad6db60",
+    "draft_pr": "https://github.com/chris12830/CCSAS/pull/1",
+    "run_id": 38169169107,
+    "url": "https://github.com/chris12830/CCSAS/actions/runs/38169169107",
+    "jobs": {
+      "application": 114557938276,
+      "domain": 114557938461
+    },
+    "tests": {
+      "supplier_workflows": 21,
+      "migration": 14,
+      "sqlite_atomic_persistence": 4,
+      "sas_regressions": 11,
+      "supplier_api": 8,
+      "total": 58,
+      "failed": 0
+    },
     "typecheck": "passed",
-    "build": "passed"
+    "build": "passed",
+    "commands": [
+      "node --test tests/supplier-workflows.test.mjs tests/supplier-migration.test.mjs tests/supplier-persistence.test.mjs",
+      "node scripts/verify-sas.mjs",
+      "node --experimental-transform-types --test tests/supplier-api.test.mjs",
+      "pnpm exec tsc --noEmit",
+      "pnpm run build"
+    ]
   },
-  "later_checks": "Await exact final branch heads. No staging data/provider/browser acceptance is implied.",
+  "ccon": {
+    "repository": "chris12830/child-care-owners-network",
+    "branch": "feature/ccsas-supplier-transition",
+    "code_commit": "59ac1cd6a6aa5b81caa230df2fca7fd0644d9284",
+    "draft_pr": "https://github.com/chris12830/child-care-owners-network/pull/1",
+    "run_id": 38168596484,
+    "url": "https://github.com/chris12830/child-care-owners-network/actions/runs/38168596484",
+    "jobs": {
+      "application": 114556232808
+    },
+    "tests": {
+      "existing_regressions": 118,
+      "supplier_transition": 8,
+      "total": 126,
+      "failed": 0
+    },
+    "typecheck": "passed",
+    "build": "passed",
+    "commands": [
+      "pnpm test",
+      "pnpm exec tsc --noEmit",
+      "pnpm run build"
+    ]
+  },
+  "total_checks": 184,
+  "evidence_scope": [
+    "Real Node execution in GitHub Actions on the pinned source commits.",
+    "Real SQLite applies the repository SQL migrations and exercises atomic batches, scoped APIs, export privacy, readiness and rollback guards.",
+    "Authentication and Cloudflare environment bindings are test substitutes; signed-in production authentication is not proven.",
+    "Later evidence-only commits do not change the validated application files."
+  ],
+  "not_tested": [
+    "Live payment providers or production credentials",
+    "Production data export/import, supplier migration or financial reconciliation",
+    "Real signed-in owner/supplier/member browser journeys",
+    "Actual Cloudflare deployment, Site source checkout/push or staging backup/restore",
+    "Complete CCON supplier feature parity"
+  ],
+  "safety_state": {
+    "ccon_mode_default": "local",
+    "ccon_supplier_parity_ready": false,
+    "activation": "blocked",
+    "supplier_records_removed": false,
+    "source_main": "6fd5ee85ec16b1d03e0ec6ea6c78442486ba2431",
+    "ccsas_main": "7938e97a70c60a1d307605fc04a264e3b4b506b4"
+  },
+  "execution_blocker": "Local command execution is unavailable; official Site source checkout/push, deployment and signed-in staging cannot be completed in this session.",
   "unfinished_gate_ids": [
     "SUP-01",
     "SUP-02",
