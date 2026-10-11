@@ -39,7 +39,7 @@ test("full-network packages include newly enabled apps and reduced package limit
  s.packages.find(p=>p.id==="bundle")!.maxApps=1;assert.ok(!eligibleAds(s,opts).some(c=>c.id==="ad-maple"));
 });
 test("supplier submissions are pending, bound to verified identity, and retain policy acceptance",()=>{
- const s=initialNetwork();const next=applyAction(s,"save_supplier",{name:"Real Supplier",contact:"Sam Supplier",email:"forged@example.test",website:"https://example.test",category:"Software & services",countries:["CA"],packageId:"single",currency:"CAD",accepted:true,sample:true},supplierActor);
+ const s=initialNetwork();const next=applyAction(s,"save_supplier",{name:"Real Supplier",contact:"Sam Supplier",email:"forged@example.test",website:"https://example.test",category:"Software & services",countries:["CA"],packageId:"single",currency:"CAD",accepted:true,policyVersion:s.settings.policyVersion,policyText:s.settings.policy,sample:true},supplierActor);
  const supplier=next.suppliers.at(-1)!;assert.equal(supplier.email,supplierActor.email);assert.equal(supplier.userId,supplierActor.userId);assert.equal(supplier.status,"pending");assert.equal(supplier.billingStatus,"unpaid");assert.equal(supplier.sample,false);assert.equal(supplier.policyText,s.settings.policy);assert.ok(supplier.policyAcceptedAt);
  assert.equal(s.suppliers.length,4);assert.throws(()=>applyAction(next,"supplier_status",{id:supplier.id,status:"approved"},supplierActor),/network owner/);
  assert.throws(()=>applyAction(next,"save_supplier",{...supplier,id:"sup-maple",accepted:true},supplierActor),/another supplier/);

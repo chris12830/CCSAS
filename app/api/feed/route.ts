@@ -9,7 +9,7 @@ export async function GET(request:Request){try{
   else if(!key||!app.integrationHash||await hashKey(key)!==app.integrationHash)return Response.json({error:"An application connection key is required."},{status:401});
   const country=q.get("country");if(country&&!['CA','US'].includes(country))return Response.json({error:"Country must be CA or US."},{status:400});
   const audience=q.get("audience")??"owner";if(!['owner','admin','staff'].includes(audience))return Response.json({error:"Invalid audience."},{status:400});
-  const ads=eligibleAds(row.state,{appId:app.id,country:country as Country|undefined,audience:audience as Audience,placement:q.get("placement")??undefined,region:q.get("region")??undefined,preview}).map(c=>deliveryAd(c,row.state));
+  const ads=eligibleAds(row.state,{appId:app.id,country:country as Country|undefined,audience:audience as Audience,placement:q.get("placement")??undefined,region:q.get("region")??undefined,hubId:q.get("hub")??undefined,preview}).map(c=>deliveryAd(c,row.state));
   if(!preview)await database().prepare("INSERT INTO sas_connections (app_id,last_seen) VALUES (?,?) ON CONFLICT(app_id) DO UPDATE SET last_seen=excluded.last_seen").bind(app.id,new Date().toISOString()).run();
   return Response.json({app:app.id,ads,settings:{speed:row.state.settings.speed,maxCopy:row.state.settings.maxCopy},preview},{headers:{"Cache-Control":"no-store"}});
 }catch(error){console.error("SAS feed",error);return Response.json({ads:[],error:"Advertising temporarily unavailable."},{status:503});}}

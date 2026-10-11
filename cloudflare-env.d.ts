@@ -3,5 +3,6 @@ declare namespace Cloudflare {
     DB?: D1Database;
     BUCKET?: R2Bucket;
     SAS_DOCTRAIN_APP_KEY?: string;
+    SAS_CCON_APP_KEY?: string;
   }
 }

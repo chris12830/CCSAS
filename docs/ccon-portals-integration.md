@@ -1,7 +1,7 @@
 # ChildCareOwnersNetwork → CC SAS portal integration
 
-Status: implementation specification, not a completed migration.
-Source: `chris12830/child-care-owners-network` (`main`), read-only.
+Status: implementation in progress on the feature branch. Shared supplier workflows and portal UI are implemented; full repository checks, source migration and production rollout remain pending.
+Source: `chris12830/child-care-owners-network` (`main`); transition work is authorized on `feature/ccsas-supplier-transition`.
 Destination: `chris12830/CCSAS` (`feature/ccon-portals-integration`).
 Do not merge to `main` without the owner's approval.
 
@@ -24,7 +24,7 @@ ChildCareOwnersNetwork contains specialized modules for supplier accounts, membe
 10. **Supplier experience**: Expand `/supplier` with profile, application, agreement, campaigns, purchases, billing, royalty reporting, messages and analytics.
 
 ## Safety and migration rules
-- No edits to the ChildCareOwnersNetwork repository.
+- CCON transition changes are authorized on its development branch. Member information, enquiries, offers and group orders remain in CCON.
 - No direct cross-project database reads or shared passwords.
 - Introduce additive D1 migrations; do not overwrite existing supplier or campaign records.
 - Make all changes on this feature branch. Review and test before PR merge.
