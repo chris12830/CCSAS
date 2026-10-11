@@ -2,7 +2,7 @@ import {getChatGPTUser} from "../../chatgpt-auth";
 import {network,hashKey,database} from "../../../lib/sas-db";
 import {eligibleAds,deliveryAd,Country,Audience} from "../../../lib/sas-model";
 export async function GET(request:Request){try{
-  const q=new URL(request.url).searchParams,row=await network(),app=row.state.apps.find(a=>a.id===q.get("app"));
+  const q=new URL(request.url).searchParams,row=await network(undefined,"none"),app=row.state.apps.find(a=>a.id===q.get("app"));
   if(!app)return Response.json({error:"Application not found."},{status:404});
   const preview=q.get("preview")==="1",user=await getChatGPTUser(),key=request.headers.get("X-SAS-App-Key");
   if(preview){if(!user||user.userId!==row.ownerId)return Response.json({error:"Only the owner can preview sample ads."},{status:403});}

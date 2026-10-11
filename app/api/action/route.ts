@@ -11,6 +11,12 @@ export async function POST(request:Request){
     const {action,input,version}=z.object({action:z.string(),input:z.unknown(),version:z.number().int()}).parse(await request.json());
     const row=await network(),owner=row.ownerId===user.userId;if(!owner)return Response.json({error:"Use the supplier submission endpoint for your own account."},{status:403});
     if(version!==row.version)return Response.json({error:"Your network has changed. Refresh before saving."},{status:409});
+    if(action==="record_payment"){
+      const receipt=input as {reference?:string;supplierId?:string;amount?:number;currency?:string};
+      if(row.workspace.submissions.some(p=>p.status==="verified"&&p.receiptReference===receipt.reference))return Response.json({error:"This receipt is already recorded in the shared supplier ledger."},{status:409});
+      const terms=row.workspace.profiles.find(p=>p.supplierId===receipt.supplierId)?.terms;
+      if(terms&&(Math.round(Number(receipt.amount)*100)!==terms.amountCents||receipt.currency!==terms.currency))return Response.json({error:"Verify the accepted invoice price and currency in Supplier services."},{status:409});
+    }
     let next=row.state,workspace=row.workspace,key:string|undefined;
     if(action==="generate_key"){
       const {id}=z.object({id:z.string()}).parse(input),app=next.apps.find(a=>a.id===id);if(!app)throw new Error("Application not found.");

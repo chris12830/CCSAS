@@ -5,12 +5,12 @@ export type Application = {
   enabled: boolean; countries: Country[]; packages: string[]; audiences: Audience[];
   placements: string[]; integrationHash?: string; hasKey?: boolean; lastSeen?: string; hubIds?:string[];
 };
-export type Package = {id:string; name:string; description:string; maxApps:number; cad:number; usd:number; enabled:boolean; checkoutCad:string; checkoutUsd:string; billingInterval?:"monthly"|"annual"; royaltyBps?:number};
+export type Package = {id:string; name:string; description:string; maxApps:number; cad:number; usd:number; enabled:boolean; checkoutCad:string; checkoutUsd:string; billingInterval?:"monthly"|"annual"; royaltyBps?:number; sourceCurrency?:"CAD"|"USD"};
 export type Supplier = {
   id:string; name:string; contact:string; email:string; website:string; category:string;
   countries:Country[]; status:"pending"|"approved"|"suspended"|"rejected"|"more_info_requested";
   accountStatus?:"active"|"hold"|"cancelled"|"deleted"; accountReason?:string; accountUpdatedAt?:string;
-  sourceProject?:string; sourceSupplierId?:string;
+  sourceProject?:string; sourceSupplierId?:string; sourceAccountId?:string; paidThroughAt?:string;
   packageId:string; billingStatus:"unpaid"|"active"|"past_due"; paidUntil:string;
   currency:"CAD"|"USD"; sample:boolean; userId?:string;
   policyAcceptedAt:string; policyVersion:string; policyText:string; createdAt:string;
@@ -20,7 +20,7 @@ export type Campaign = {
   currency:"CAD"|"USD"; appIds:string[]; placement:string; region:string;
   status:"draft"|"review"|"published"|"paused"|"rejected";
   start:string; end:string; createdAt:string; sample:boolean;
-  hubId?:string; tickerSpeed?:"normal"|"premium"; sourceProject?:string; sourceAdId?:string;
+  hubId?:string; tickerSpeed?:"normal"|"premium"; sourceProject?:string; sourceAdId?:string; expiresAt?:string;
 };
 export type Payment = {id:string; supplierId:string; amount:number; currency:"CAD"|"USD"; reference:string; date:string; paidUntil:string; sample:boolean};
 export type Activity = {id:string; text:string; date:string; sample?:boolean};
@@ -54,13 +54,14 @@ export function initialNetwork():Network {
     settings:{name:"SAS · Supplier Advertising System",maxCopy:100,speed:40,paused:false,showSamples:true,policy:INITIAL_POLICY,policyVersion:POLICY_VERSION},
   };
 }
-export function eligibleAds(state:Network,opts:{appId:string;country?:Country;audience?:Audience;placement?:string;region?:string;hubId?:string;preview?:boolean;date?:string}):Campaign[]{
+export function eligibleAds(state:Network,opts:{appId:string;country?:Country;audience?:Audience;placement?:string;region?:string;hubId?:string;preview?:boolean;date?:string;now?:string}):Campaign[]{
   const date=opts.date??today(),app=state.apps.find(a=>a.id===opts.appId);
   if(!app?.enabled||state.settings.paused||!app.audiences.includes(opts.audience??"owner"))return [];
   const placement=opts.placement??placements[0]; if(!app.placements.includes(placement))return [];
   return state.campaigns.filter(c=>{
     const s=state.suppliers.find(s=>s.id===c.supplierId),p=state.packages.find(p=>p.id===s?.packageId);
     if(!s||!p?.enabled||s.status!=="approved"||(s.accountStatus??"active")!=="active"||s.billingStatus!=="active"||!s.paidUntil||s.paidUntil<date)return false;
+    if((s.paidThroughAt&&s.paidThroughAt<=(opts.now??new Date().toISOString()))||(c.expiresAt&&c.expiresAt<=(opts.now??new Date().toISOString())))return false;
     if(c.status!=="published"||c.start>date||c.end<date||c.placement!==placement||(p.maxApps<99&&!c.appIds.includes(app.id)))return false;
     if(c.appIds.length>p.maxApps)return false;
     if(c.hubId&&(c.hubId!==opts.hubId||!c.appIds.includes(app.id)))return false;
