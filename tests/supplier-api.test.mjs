@@ -1,0 +1,72 @@
+import test,{after} from "node:test";
+import assert from "node:assert/strict";
+import {readFileSync,readdirSync} from "node:fs";
+import {registerHooks} from "node:module";
+import {DatabaseSync} from "node:sqlite";
+const db=new DatabaseSync(":memory:");
+for(const file of readdirSync(new URL("../drizzle/",import.meta.url)).filter(f=>f.endsWith(".sql")).sort())db.exec(readFileSync(new URL("../drizzle/"+file,import.meta.url),"utf8"));
+const binding={
+ prepare(sql){const statement=db.prepare(sql);let params=[];return {bind(...values){params=values;return this;},async first(){return statement.get(...params)??null;},async all(){return {results:statement.all(...params)};},async run(){return statement.columns().length?{results:statement.all(...params),meta:{changes:0}}:{results:[],meta:{changes:Number(statement.run(...params).changes)}};}}},
+ async batch(statements){db.exec("BEGIN");try{const values=[];for(const statement of statements)values.push(await statement.run());db.exec("COMMIT");return values;}catch(e){db.exec("ROLLBACK");throw e;}},
+};
+globalThis.__supplierApiEnv={DB:binding};
+const hooks=registerHooks({resolve(specifier,context,next){
+ if(specifier==="cloudflare:workers")return {url:"data:text/javascript,export const env=globalThis.__supplierApiEnv",shortCircuit:true};
+ if(specifier.endsWith("chatgpt-auth"))return {url:"data:text/javascript,export async function getChatGPTUser(){return globalThis.__supplierApiUser;}",shortCircuit:true};
+ try{return next(specifier,context);}catch(e){if(specifier.startsWith(".")&&!/\.[a-z]+$/i.test(specifier))return next(specifier+".ts",context);throw e;}
+}});
+const stateRoute=await import("../app/api/state/route.ts"),supplierRoute=await import("../app/api/supplier/route.ts"),actionRoute=await import("../app/api/action/route.ts"),migrationRoute=await import("../app/api/migration/route.ts");
+after(()=>{hooks.deregister();db.close();delete globalThis.__supplierApiEnv;delete globalThis.__supplierApiUser;});
+const owner={id:"owner",email:"owner@example.test"},supplier={id:"supplier",email:"supplier@example.test"},borrower={id:"borrower",email:supplier.email};
+async function request(actor,endpoint,method="GET",body,origin="https://supplier-api.example.test"){
+ globalThis.__supplierApiUser=actor?{userId:actor.id,email:actor.email,displayName:actor.id,fullName:null}:null;
+ const route={state:stateRoute,supplier:supplierRoute,action:actionRoute,migration:migrationRoute}[endpoint];
+ const response=await route[method](new Request("https://supplier-api.example.test/api/"+endpoint,{method,headers:{Origin:origin,"Content-Type":"application/json"},...(body?{body:JSON.stringify(body)}:{})}));
+ return {status:response.status,data:await response.json()};
+}
+const loaded=await request(owner,"state"),initial=loaded.data.state;
+const application=await request(supplier,"supplier","POST",{action:"save_supplier",input:{name:"Test Company",contact:"Sam Supplier",email:"forged@example.test",website:"https://example.test",category:"Software & services",countries:["CA"],packageId:"single",currency:"CAD",accepted:true,policyVersion:initial.settings.policyVersion,policyText:initial.settings.policy},version:loaded.data.version});
+assert.equal(application.status,200);
+const supplierId=application.data.state.suppliers[0].id;
+for(const row of [{collection:"messages",id:"own-message",supplierId,body:"Own supplier message",senderRole:"owner",createdAt:"now"},{collection:"messages",id:"other-message",supplierId:"sup-maple",body:"Other supplier private message",senderRole:"owner",createdAt:"now"},{collection:"sourceRecords",id:"internal-source",supplierId,record:{internal:"Private moderation note"}}])
+ db.prepare("INSERT INTO sas_supplier_records(collection,id,supplier_id,data,updated_at) VALUES (?,?,?,?,?)").run(row.collection,row.id,row.supplierId,JSON.stringify(row),"now");
+async function mutate(actor,action,input,endpoint=actor.id==="owner"?"action":"supplier",version){const current=await request(owner,"state");return request(actor,endpoint,"POST",{action,input,version:version??current.data.version});}
+test("supplier API returns only owned records and hides internal source history",async()=>{
+ const result=await request(supplier,"supplier");assert.equal(result.status,200);assert.equal(result.data.state.suppliers.length,1);assert.equal(result.data.state.suppliers[0].email,supplier.email);assert.equal(result.data.workspace.messages.length,1);assert.equal(result.data.workspace.sourceRecords.length,0);assert.equal(result.data.workspace.audit.length,0);assert.equal(JSON.stringify(result.data).includes("Other supplier private message"),false);
+});
+test("bound identity cannot be borrowed through matching email",async()=>{
+ const result=await request(borrower,"supplier");assert.equal(result.data.state.suppliers.length,0);
+ assert.equal((await mutate(borrower,"supplier.profile",{supplierId,legalName:"Borrowed account"})).status,403);
+});
+test("supplier cannot use owner actions or approve itself",async()=>{
+ assert.equal((await mutate(supplier,"supplier.review",{supplierId,decision:"approved",reason:""})).status,403);
+ assert.equal((await mutate(supplier,"supplier.profile",{supplierId,legalName:"Company"},"action")).status,403);
+});
+test("administrator cannot fabricate policy acceptance through the owner API",async()=>{
+ const current=(await request(owner,"state")).data.state;
+ assert.equal((await mutate(owner,"supplier.accept_policy",{supplierId,accepted:true,version:current.settings.policyVersion,text:current.settings.policy})).status,403);
+});
+test("stale writes and cross-origin posts do not change the network",async()=>{
+ const current=await request(owner,"state");
+ assert.equal((await mutate(supplier,"supplier.profile",{supplierId,legalName:"Stale"},"supplier",current.data.version-1)).status,409);
+ const denied=await request(owner,"action","POST",{action:"supplier.account",input:{supplierId,status:"hold",reason:"Hold"},version:current.data.version},"https://other.example.test");assert.equal(denied.status,403);
+ assert.equal((await request(owner,"state")).data.version,current.data.version);
+});
+test("API payment claims stay unpaid until exact terms and a verified owner receipt",async()=>{
+ assert.equal((await mutate(owner,"record_payment",{supplierId,amount:49,currency:"CAD",reference:"early-bank-receipt",date:"2026-10-11",paidUntil:"2030-01-31"})).status,409);
+ const current=(await request(supplier,"supplier")).data.state;
+ const terms=await mutate(supplier,"supplier.accept_terms",{supplierId,accepted:true,version:current.settings.policyVersion,text:current.settings.policy,packageId:"single",currency:"CAD",amountCents:4900,royaltyBps:0});assert.equal(terms.status,200);
+ const invoice=await mutate(owner,"supplier.invoice",{supplierId,kind:"plan",reference:"API-INVOICE",amountCents:4900,currency:"CAD",dueAt:"2030-01-01",paidUntil:"2030-01-31"});assert.equal(invoice.status,200);
+ const invoiceId=invoice.data.workspace.invoices.at(-1).id;
+ const claim=await mutate(supplier,"supplier.submit_payment",{supplierId,invoiceId,reference:"API-CLAIM"});assert.equal(claim.status,200);assert.equal(claim.data.state.suppliers[0].billingStatus,"unpaid");
+ const paymentId=claim.data.workspace.submissions.at(-1).id;
+ assert.equal((await mutate(owner,"supplier.verify_payment",{supplierId,paymentId,amountCents:4900,currency:"USD",receiptReference:"API-RECEIPT"})).status,409);
+ const verified=await mutate(owner,"supplier.verify_payment",{supplierId,paymentId,amountCents:4900,currency:"CAD",receiptReference:"API-RECEIPT"});assert.equal(verified.status,200);assert.equal(verified.data.state.suppliers.find(s=>s.id===supplierId).billingStatus,"active");
+});
+test("legacy payment endpoint cannot reuse a verified shared receipt",async()=>{
+ const result=await mutate(owner,"record_payment",{supplierId,amount:49,currency:"CAD",reference:"API-RECEIPT",date:"2026-10-11",paidUntil:"2030-01-31"});assert.equal(result.status,409);
+});
+test("unsigned requests and non-owner imports are rejected",async()=>{
+ assert.equal((await request(null,"supplier")).status,401);
+ assert.equal((await request(supplier,"migration","POST",{version:0,transfer:{},apply:false})).status,403);
+});

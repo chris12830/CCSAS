@@ -14,8 +14,9 @@ export async function POST(request:Request){
     if(action==="record_payment"){
       const receipt=input as {reference?:string;supplierId?:string;amount?:number;currency?:string};
       if(row.workspace.submissions.some(p=>p.status==="verified"&&p.receiptReference===receipt.reference))return Response.json({error:"This receipt is already recorded in the shared supplier ledger."},{status:409});
-      const terms=row.workspace.profiles.find(p=>p.supplierId===receipt.supplierId)?.terms;
-      if(terms&&(Math.round(Number(receipt.amount)*100)!==terms.amountCents||receipt.currency!==terms.currency))return Response.json({error:"Verify the accepted invoice price and currency in Supplier services."},{status:409});
+      const supplier=row.state.suppliers.find(s=>s.id===receipt.supplierId),terms=row.workspace.profiles.find(p=>p.supplierId===receipt.supplierId)?.terms;
+      if(!terms&&row.workspace.acceptances.some(p=>p.supplierId===receipt.supplierId&&p.source==="ccsas"))return Response.json({error:"The supplier must accept their package price and currency before payment verification."},{status:409});
+      if(terms&&(terms.packageId!==supplier?.packageId||(Math.round(Number(receipt.amount)*100)!==terms.amountCents||receipt.currency!==terms.currency)))return Response.json({error:"Verify the accepted invoice price and currency in Supplier services."},{status:409});
     }
     let next=row.state,workspace=row.workspace,key:string|undefined;
     if(action==="generate_key"){
