@@ -1,6 +1,6 @@
 import {getChatGPTUser} from "../../chatgpt-auth";
 import {network,saveNetwork,supplierSummaries} from "../../../lib/sas-db";
-import {publicState,Network} from "../../../lib/sas-model";
+import {publicState,type Network} from "../../../lib/sas-model";
 import {applyAction} from "../../../lib/sas-actions";
 import {ownsSupplier,scopeWorkspace,executeSupplierWorkflow,workflowActions,type Workspace} from "../../../lib/supplier-workflows.mjs";
 import {z} from "zod";

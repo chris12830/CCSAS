@@ -1,5 +1,5 @@
 import {env} from "cloudflare:workers";
-import {initialNetwork, Network} from "./sas-model";
+import {initialNetwork, type Network} from "./sas-model";
 import {emptyWorkspace,workspaceCollections,type Workspace} from "./supplier-workflows.mjs";
 import {supplierWritePlan} from "./supplier-persistence.mjs";
 export function database(){if(!env.DB)throw new Error("Advertising storage is temporarily unavailable.");return env.DB;}

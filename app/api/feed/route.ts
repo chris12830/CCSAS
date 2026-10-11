@@ -1,6 +1,6 @@
 import {getChatGPTUser} from "../../chatgpt-auth";
 import {network,hashKey,database} from "../../../lib/sas-db";
-import {eligibleAds,deliveryAd,Country,Audience} from "../../../lib/sas-model";
+import {eligibleAds,deliveryAd,type Country,type Audience} from "../../../lib/sas-model";
 export async function GET(request:Request){try{
   const q=new URL(request.url).searchParams,row=await network(undefined,"none"),app=row.state.apps.find(a=>a.id===q.get("app"));
   if(!app)return Response.json({error:"Application not found."},{status:404});

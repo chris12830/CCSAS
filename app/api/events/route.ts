@@ -1,5 +1,5 @@
 import {network,database,hashKey} from "../../../lib/sas-db";
-import {eligibleAds,Audience,Country} from "../../../lib/sas-model";
+import {eligibleAds,type Audience,type Country} from "../../../lib/sas-model";
 import {z} from "zod";
 export async function POST(request:Request){try{
   const v=z.object({id:z.string().uuid(),appId:z.string(),campaignId:z.string(),kind:z.enum(["impression","click"]),country:z.enum(["CA","US"]),audience:z.enum(["owner","admin","staff"]).default("owner"),placement:z.string().default("Dashboard ticker"),region:z.string().default(""),hubId:z.string().default("")}).parse(await request.json());

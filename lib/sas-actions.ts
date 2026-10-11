@@ -1,5 +1,5 @@
 import {z} from "zod";
-import {Network, Supplier, Campaign, Country, Audience, POLICY_VERSION, today, categories, placements} from "./sas-model";
+import {type Network, type Supplier, type Campaign, type Country, type Audience, POLICY_VERSION, today, categories, placements} from "./sas-model";
 
 const id=z.string().min(1).max(100), name=z.string().trim().min(2).max(80);
 const countries=z.array(z.enum(["CA","US"])).min(1).max(2);
