@@ -119,6 +119,7 @@ test("real database saves retain checkout reservations and provider settings aft
  };
  try{
   apiActor(owner);const configured=await paymentsRoute.POST(new Request("https://supplier-api.example.test/api/payments",{method:"POST",headers:{Origin:"https://supplier-api.example.test","Content-Type":"application/json"},body:JSON.stringify({operation:"configure",input:{enabled:true}})}));assert.equal(configured.status,200);assert.equal((await configured.json()).enabled,true);
+  assert.equal((await mutate(owner,"supplier.review",{supplierId,decision:"approved",reason:""})).status,200);
   const membership=await mutate(supplier,"supplier.membership_invoice",{supplierId});assert.equal(membership.status,200);const invoiceId=membership.data.workspace.invoices.at(-1).id;
   apiActor(supplier);const start=await paymentsRoute.POST(new Request("https://supplier-api.example.test/api/payments",{method:"POST",headers:{Origin:"https://supplier-api.example.test","Content-Type":"application/json"},body:JSON.stringify({operation:"checkout",input:{invoiceId}})}));assert.equal(start.status,200);const created=await start.json();
   const list=await paymentsRoute.GET(new Request("https://supplier-api.example.test/api/payments"));const persisted=await list.json();assert.equal(persisted.processing.enabled,true);assert.equal(persisted.payments.at(-1).sessionId,created.sessionId);assert.equal(persisted.payments.at(-1).status,"open");
