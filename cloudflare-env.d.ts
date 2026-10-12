@@ -4,5 +4,7 @@ declare namespace Cloudflare {
     BUCKET?: R2Bucket;
     SAS_DOCTRAIN_APP_KEY?: string;
     SAS_CCON_APP_KEY?: string;
+    STRIPE_SECRET_KEY?: string;
+    STRIPE_WEBHOOK_SECRET?: string;
   }
 }
