@@ -11,6 +11,7 @@ export async function POST(request:Request){try{
  const fingerprint=await hashKey(canonicalTransfer(body.transfer));
  const next=importSuppliers(row.state,row.workspace,body.transfer,{userId:user.userId,email:user.email,owner:true},{fingerprint});
  if(body.apply===true){
+  if(body.transfer.data.onlinePayments.some((p:{status:string;livemode:number;applied_at?:string})=>["creating","open","processing","review_required"].includes(p.status)||p.livemode===1&&p.status==="paid"&&!p.applied_at))return Response.json({error:"Reconcile or expire pending source provider payments before applying this export."},{status:409});
   if(body.fingerprint!==fingerprint||body.transfer.frozen!==true)return Response.json({error:"Freeze source supplier writes, preview this exact export and confirm its fingerprint before importing."},{status:409});
   if(!next.report.idempotent)await saveNetwork(next.state,row.version,next.workspace,row.workspace);
  }
