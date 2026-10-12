@@ -5,7 +5,7 @@ export type Application = {
   enabled: boolean; countries: Country[]; packages: string[]; audiences: Audience[];
   placements: string[]; integrationHash?: string; hasKey?: boolean; lastSeen?: string; hubIds?:string[];
 };
-export type Package = {id:string; name:string; description:string; maxApps:number; cad:number; usd:number; enabled:boolean; checkoutCad:string; checkoutUsd:string; billingInterval?:"monthly"|"annual"; royaltyBps?:number; sourceCurrency?:"CAD"|"USD"};
+export type Package = {id:string; name:string; description:string; maxApps:number; cad:number; usd:number; enabled:boolean; checkoutCad:string; checkoutUsd:string; billingInterval?:"monthly"|"annual"; royaltyBps?:number; sourceCurrency?:"CAD"|"USD"; staticAllowed?:boolean; sourceAppId?:string};
 export type Supplier = {
   id:string; name:string; contact:string; email:string; website:string; category:string;
   countries:Country[]; status:"pending"|"approved"|"suspended"|"rejected"|"more_info_requested";
