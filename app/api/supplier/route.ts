@@ -3,10 +3,12 @@ import {network,saveNetwork,supplierSummaries} from "../../../lib/sas-db";
 import {publicState,type Network} from "../../../lib/sas-model";
 import {applyAction} from "../../../lib/sas-actions";
 import {ownsSupplier,scopeWorkspace,executeSupplierWorkflow,workflowActions,type Workspace} from "../../../lib/supplier-workflows.mjs";
+import {validateSupplierApplication} from "../../../lib/supplier-catalog.mjs";
 import {z} from "zod";
 function scope(state:Network,userId:string,email:string){
   const suppliers=state.suppliers.filter(s=>ownsSupplier(s,{userId,email,owner:false}));
-  return publicState({...state,suppliers,campaigns:state.campaigns.filter(c=>suppliers.some(s=>s.id===c.supplierId)),payments:state.payments.filter(p=>suppliers.some(s=>s.id===p.supplierId)),activity:[]});
+  const packages=state.packages.filter(p=>!p.supplierId||suppliers.some(s=>s.id===p.supplierId));
+  return publicState({...state,packages,apps:state.apps.map(a=>({...a,packages:a.packages.filter(id=>packages.some(p=>p.id===id))})),suppliers,campaigns:state.campaigns.filter(c=>suppliers.some(s=>s.id===c.supplierId)),payments:state.payments.filter(p=>suppliers.some(s=>s.id===p.supplierId)),activity:[]});
 }
 async function payload(state:Network,workspace:Workspace,version:number,user:{userId:string;email:string;displayName:string}){
   const scoped=scope(state,user.userId,user.email);
@@ -28,6 +30,7 @@ export async function POST(request:Request){try{
     next=applyAction(row.state,action,input,actor);
     if(action==="save_supplier"){
       const supplier=next.suppliers.find(s=>ownsSupplier(s,actor));
+      if(supplier&&next.packages.find(p=>p.id===supplier.packageId)?.sourceAppId==="owners")workspace=validateSupplierApplication(next,workspace,supplier,input,actor);
       if(supplier)({state:next,workspace}=executeSupplierWorkflow(next,workspace,"supplier.accept_policy",{supplierId:supplier.id,accepted:true,version:next.settings.policyVersion,text:next.settings.policy},actor));
     }
   }

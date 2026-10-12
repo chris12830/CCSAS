@@ -5,7 +5,7 @@ export type Application = {
   enabled: boolean; countries: Country[]; packages: string[]; audiences: Audience[];
   placements: string[]; integrationHash?: string; hasKey?: boolean; lastSeen?: string; hubIds?:string[];
 };
-export type Package = {id:string; name:string; description:string; maxApps:number; cad:number; usd:number; enabled:boolean; checkoutCad:string; checkoutUsd:string; billingInterval?:"monthly"|"annual"; royaltyBps?:number; sourceCurrency?:"CAD"|"USD"; staticAllowed?:boolean; sourceAppId?:string};
+export type Package = {id:string; name:string; description:string; maxApps:number; cad:number; usd:number; enabled:boolean; checkoutCad:string; checkoutUsd:string; billingInterval?:"monthly"|"annual"; royaltyBps?:number; sourceCurrency?:"CAD"|"USD"; staticAllowed?:boolean; sourceAppId?:string; supplierId?:string; sourcePlanId?:string; publicOffer?:boolean; campaignRates?:{configured:boolean;ticker:number;premium:number;premiumFree:boolean;hubTicker:number;hubStatic:number};campaignCheckout?:{ticker:string;premium:string;hubTicker:string;hubStatic:string};benefits?:string[]};
 export type Supplier = {
   id:string; name:string; contact:string; email:string; website:string; category:string;
   countries:Country[]; status:"pending"|"approved"|"suspended"|"rejected"|"more_info_requested";
@@ -20,6 +20,7 @@ export type Campaign = {
   currency:"CAD"|"USD"; appIds:string[]; placement:string; region:string;
   status:"draft"|"review"|"published"|"paused"|"rejected";
   start:string; end:string; createdAt:string; sample:boolean;
+  feeCents?:number;paymentStatus?:"paid"|"unpaid"|"waived";paidAt?:string;
   hubId?:string; tickerSpeed?:"normal"|"premium"; sourceProject?:string; sourceAdId?:string; expiresAt?:string;
 };
 export type Payment = {id:string; supplierId:string; amount:number; currency:"CAD"|"USD"; reference:string; date:string; paidUntil:string; sample:boolean};
@@ -27,7 +28,7 @@ export type Activity = {id:string; text:string; date:string; sample?:boolean};
 export type Network = {
   apps:Application[]; packages:Package[]; suppliers:Supplier[]; campaigns:Campaign[];
   payments:Payment[]; activity:Activity[];
-  settings:{name:string; maxCopy:number; speed:number; paused:boolean; showSamples:boolean; policy:string;policyVersion:string};
+  settings:{name:string; maxCopy:number; speed:number; paused:boolean; showSamples:boolean; policy:string;policyVersion:string;supplierCriteria?:any};
 };
 export type Summary = {appId:string; impressions:number; clicks:number};
 export const POLICY_VERSION="2026-10-05.1";
@@ -61,7 +62,8 @@ export function eligibleAds(state:Network,opts:{appId:string;country?:Country;au
   return state.campaigns.filter(c=>{
     const s=state.suppliers.find(s=>s.id===c.supplierId),p=state.packages.find(p=>p.id===s?.packageId);
     if(!s||!p?.enabled||s.status!=="approved"||(s.accountStatus??"active")!=="active"||s.billingStatus!=="active"||!s.paidUntil||s.paidUntil<date)return false;
-    if((s.paidThroughAt&&s.paidThroughAt<=(opts.now??new Date().toISOString()))||(c.expiresAt&&c.expiresAt<=(opts.now??new Date().toISOString())))return false;
+    if((s.paidThroughAt&&Date.parse(s.paidThroughAt)<=Date.parse(opts.now??new Date().toISOString()))||(c.expiresAt&&Date.parse(c.expiresAt)<=Date.parse(opts.now??new Date().toISOString())))return false;
+    if(c.appIds.includes("owners")&&p.sourceAppId==="owners"&&c.paymentStatus!=="paid"&&c.paymentStatus!=="waived")return false;
     if(c.status!=="published"||c.start>date||c.end<date||c.placement!==placement||(p.maxApps<99&&!c.appIds.includes(app.id)))return false;
     if(c.appIds.length>p.maxApps)return false;
     if(c.hubId&&(c.hubId!==opts.hubId||!c.appIds.includes(app.id)))return false;

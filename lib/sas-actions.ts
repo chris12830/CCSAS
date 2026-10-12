@@ -1,13 +1,14 @@
+import {campaignPurchaseQuote} from "./supplier-catalog.mjs";
 import {z} from "zod";
 import {type Network, type Supplier, type Campaign, type Country, type Audience, POLICY_VERSION, today, categories, placements} from "./sas-model";
 
-const id=z.string().min(1).max(100), name=z.string().trim().min(2).max(80);
+const id=z.string().min(1).max(100), name=z.string().trim().min(2).max(150);
 const countries=z.array(z.enum(["CA","US"])).min(1).max(2);
 const url=z.string().trim().max(1000).refine(v=>{try{return ["http:","https:"].includes(new URL(v).protocol)}catch{return false}},"Enter a complete http or https website address.");
 const optionalUrl=z.union([url,z.literal("")]);
 const date=z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(v=>!Number.isNaN(Date.parse(v))&&new Date(v).toISOString().slice(0,10)===v,"Enter a valid date.");
-const supplierSchema=z.object({id:id.optional(),name,contact:name,email:z.string().trim().email().max(200),website:optionalUrl,category:z.string().refine(v=>categories.includes(v)),countries,packageId:id,currency:z.enum(["CAD","USD"]),accepted:z.boolean(),policyVersion:z.string().optional(),policyText:z.string().optional(),sample:z.boolean().optional()});
-const campaignSchema=z.object({id:id.optional(),supplierId:id,name,text:z.string().trim().min(5).max(120),url,country:z.enum(["CA","US"]),currency:z.enum(["CAD","USD"]),appIds:z.array(id).min(1),placement:z.string().refine(v=>placements.includes(v)),region:z.string().trim().max(80),hubId:z.string().max(100).optional(),tickerSpeed:z.enum(["normal","premium"]).optional(),start:date,end:date,submit:z.boolean()});
+const supplierSchema=z.object({id:id.optional(),name,contact:name,email:z.string().trim().email().max(200),website:optionalUrl,category:z.string().trim().min(1).max(100),countries,packageId:id,currency:z.enum(["CAD","USD"]),accepted:z.boolean(),policyVersion:z.string().optional(),policyText:z.string().optional(),sample:z.boolean().optional()});
+const campaignSchema=z.object({id:id.optional(),supplierId:id,name,text:z.string().trim().min(5).max(500),url,country:z.enum(["CA","US"]),currency:z.enum(["CAD","USD"]),appIds:z.array(id).min(1),placement:z.string().refine(v=>placements.includes(v)),region:z.string().trim().max(80),hubId:z.string().max(100).optional(),tickerSpeed:z.enum(["normal","premium"]).optional(),start:date,end:date,submit:z.boolean()});
 export type Actor={userId:string;email:string;owner:boolean};
 export function applyAction(previous:Network, action:string, input:unknown, actor:Actor):Network{
   const state=structuredClone(previous),now=new Date().toISOString();
@@ -24,7 +25,7 @@ export function applyAction(previous:Network, action:string, input:unknown, acto
       message=`${v.name} advertising settings saved.`;break;
     }
     case "save_package":{
-      const v=z.object({id,name,description:z.string().trim().min(5).max(200),maxApps:z.number().int().min(1).max(99),cad:z.number().min(0).max(10000),usd:z.number().min(0).max(10000),enabled:z.boolean(),checkoutCad:optionalUrl,checkoutUsd:optionalUrl}).parse(input);
+      const v=z.object({id,name,description:z.string().trim().min(5).max(200),maxApps:z.number().int().min(1).max(99),cad:z.number().min(0).max(1000000),usd:z.number().min(0).max(1000000),enabled:z.boolean(),checkoutCad:optionalUrl,checkoutUsd:optionalUrl}).parse(input);
       if(!state.packages.some(p=>p.id===v.id))throw new Error("Package not found.");
       state.packages=state.packages.map(p=>p.id===v.id?{...p,...v}:p); message=`${v.name} package updated.`;break;
     }
@@ -36,7 +37,9 @@ export function applyAction(previous:Network, action:string, input:unknown, acto
       const email=actor.owner?v.email:actor.email;
       if(state.suppliers.some(s=>s.id!==v.id&&s.email.toLowerCase()===email.toLowerCase()))throw new Error("This email already has a supplier application.");
       if(!state.packages.some(p=>p.id===v.packageId&&p.enabled))throw new Error("Choose an available package.");
-      const changedPackage=existing&&existing.packageId!==v.packageId;
+      const selectedPackage=state.packages.find(p=>p.id===v.packageId)!;
+      if(selectedPackage.supplierId&&selectedPackage.supplierId!==existing?.id)throw new Error("This preserved contract belongs to another supplier.");
+      const changedPackage=existing&&(existing.packageId!==v.packageId||existing.currency!==v.currency);
       const next:Supplier={...existing,id:v.id??crypto.randomUUID(),name:v.name,contact:v.contact,email,website:v.website,category:v.category,countries:v.countries,packageId:v.packageId,currency:v.currency,
         status:existing?.status??"pending",billingStatus:changedPackage?"unpaid":existing?.billingStatus??"unpaid",paidUntil:changedPackage?"":existing?.paidUntil??"",sample:existing?.sample??(actor.owner&&v.sample===true),userId:existing?.userId??(!actor.owner?actor.userId:undefined),policyAcceptedAt:actor.owner?(existing?.policyAcceptedAt??""):(existing?.policyVersion===state.settings.policyVersion?existing.policyAcceptedAt:now),policyVersion:actor.owner?(existing?.policyVersion??""):state.settings.policyVersion,policyText:actor.owner?(existing?.policyText??""):state.settings.policy,createdAt:existing?.createdAt??now};
       if(existing)state.suppliers=state.suppliers.map(s=>s.id===next.id?next:s);else state.suppliers.push(next);
@@ -55,9 +58,9 @@ export function applyAction(previous:Network, action:string, input:unknown, acto
       if(existing&&existing.supplierId!==s.id)throw new Error("A campaign's supplier cannot be changed.");
       if(!actor.owner&&(s.userId?s.userId!==actor.userId:s.email.toLowerCase()!==actor.email.toLowerCase()))throw new Error("You cannot create campaigns for another supplier.");
       if(s.status==="suspended"||s.status==="rejected"||(s.accountStatus??"active")!=="active")throw new Error("This supplier account cannot submit campaigns.");
-      if(v.text.length>state.settings.maxCopy)throw new Error(`Ad copy is limited to ${state.settings.maxCopy} characters.`);
+      const copyLimit=p.sourceAppId==="owners"?500:state.settings.maxCopy;if(v.text.length>copyLimit)throw new Error(`Ad copy is limited to ${copyLimit} characters.`);
       if(!s.countries.includes(v.country))throw new Error("This supplier does not serve the selected country.");
-      if((v.country==="CA"&&v.currency!=="CAD")||(v.country==="US"&&v.currency!=="USD"))throw new Error("Use CAD for Canada and USD for USA offers.");
+      if(p.sourceAppId==="owners"?v.currency!==p.sourceCurrency:((v.country==="CA"&&v.currency!=="CAD")||(v.country==="US"&&v.currency!=="USD")))throw new Error("Use CAD for Canada and USD for USA offers.");
       if(v.end<v.start)throw new Error("The campaign end date must follow its start date.");
       const appIds=[...new Set(v.appIds)];
       if(appIds.length>p.maxApps)throw new Error(`This package allows up to ${p.maxApps} applications.`);
@@ -65,6 +68,8 @@ export function applyAction(previous:Network, action:string, input:unknown, acto
       if(v.hubId&&(appIds.length!==1||!state.apps.find(a=>a.id===appIds[0])?.hubIds?.includes(v.hubId)))throw new Error("Select a hub belonging to the selected application.");
       if(v.placement!=="Dashboard ticker"&&!v.hubId)throw new Error("Select the target resource hub.");
       const next:Campaign={...existing,id:v.id??crypto.randomUUID(),supplierId:s.id,name:v.name,text:v.text,url:v.url,country:v.country,currency:v.currency,appIds,placement:v.placement,region:v.region,hubId:v.hubId??"",tickerSpeed:v.tickerSpeed??"normal",start:v.start,end:v.end,status:v.submit?"review":"draft",sample:s.sample,createdAt:existing?.createdAt??now};
+      const quote=campaignPurchaseQuote(state,next);
+      if(quote){next.feeCents=quote.amountCents;next.paymentStatus=quote.free?"waived":"unpaid";if(existing?.feeCents===quote.amountCents&&existing.currency===quote.currency&&existing.paymentStatus==="paid")next.paymentStatus="paid";if(!quote.free&&!existing?.paidAt)next.expiresAt="";}
       if(existing)state.campaigns=state.campaigns.map(c=>c.id===next.id?next:c);else state.campaigns.push(next);
       message=`${next.name} ${v.submit?"submitted for review":"saved as a draft"}.`;break;
     }
