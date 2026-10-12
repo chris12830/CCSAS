@@ -15,7 +15,7 @@ const hooks=registerHooks({resolve(specifier,context,next){
  if(specifier.endsWith("chatgpt-auth"))return {url:"data:text/javascript,export async function getChatGPTUser(){return globalThis.__supplierApiUser;}",shortCircuit:true};
  try{return next(specifier,context);}catch(e){if(specifier.startsWith(".")&&!/\.[a-z]+$/i.test(specifier))return next(specifier+".ts",context);throw e;}
 }});
-const stateRoute=await import("../app/api/state/route.ts"),supplierRoute=await import("../app/api/supplier/route.ts"),actionRoute=await import("../app/api/action/route.ts"),migrationRoute=await import("../app/api/migration/route.ts"),libraryRoute=await import("../app/api/library/route.ts"),libraryFileRoute=await import("../app/api/library/[id]/file/route.ts");
+const stateRoute=await import("../app/api/state/route.ts"),supplierRoute=await import("../app/api/supplier/route.ts"),actionRoute=await import("../app/api/action/route.ts"),migrationRoute=await import("../app/api/migration/route.ts"),paymentsRoute=await import("../app/api/payments/route.ts"),libraryRoute=await import("../app/api/library/route.ts"),libraryFileRoute=await import("../app/api/library/[id]/file/route.ts");
 after(()=>{hooks.deregister();db.close();delete globalThis.__supplierApiEnv;delete globalThis.__supplierApiUser;});
 const owner={id:"owner",email:"owner@example.test"},supplier={id:"supplier",email:"supplier@example.test"},borrower={id:"borrower",email:supplier.email};
 async function request(actor,endpoint,method="GET",body,origin="https://supplier-api.example.test"){
@@ -106,4 +106,22 @@ test("supplier support requests keep thread ownership and genuine sender roles",
  const reply=await mutate(owner,"supplier.message",{supplierId,ticketId:id,body:"Here are your payment instructions."});assert.equal(reply.status,200);
  const closed=await mutate(owner,"supplier.ticket_status",{supplierId,ticketId:id,status:"resolved"});assert.equal(closed.status,200);
  const reopened=await mutate(supplier,"supplier.message",{supplierId,ticketId:id,body:"I have a further question."});assert.equal(reopened.status,200);assert.equal(reopened.data.workspace.tickets.find(t=>t.id===id).status,"open");
+});
+
+test("real database saves retain checkout reservations and provider settings after reload",async()=>{
+ const originalFetch=globalThis.fetch;globalThis.__supplierApiEnv.STRIPE_SECRET_KEY="sk_test_api_fixture";
+ let session;
+ globalThis.fetch=async(url,options)=>{
+  if(String(url).endsWith("/account"))return Response.json({id:"acct_api",charges_enabled:true});
+  const values=new URLSearchParams(options.body);
+  session={id:"cs_test_apifixture",url:"https://checkout.stripe.com/c/pay/api",livemode:false,mode:"payment",status:"open",payment_status:"unpaid",amount_total:Number(values.get("line_items[0][price_data][unit_amount]")),currency:values.get("line_items[0][price_data][currency]"),expires_at:Math.round(Date.now()/1000)+3600,client_reference_id:values.get("client_reference_id"),metadata:Object.fromEntries(["paymentId","invoiceId","supplierId","quoteHash"].map(k=>[k,values.get("metadata["+k+"]")]))};
+  return Response.json(session);
+ };
+ try{
+  apiActor(owner);const configured=await paymentsRoute.POST(new Request("https://supplier-api.example.test/api/payments",{method:"POST",headers:{Origin:"https://supplier-api.example.test","Content-Type":"application/json"},body:JSON.stringify({operation:"configure",input:{enabled:true}})}));assert.equal(configured.status,200);assert.equal((await configured.json()).enabled,true);
+  const membership=await mutate(supplier,"supplier.membership_invoice",{supplierId});assert.equal(membership.status,200);const invoiceId=membership.data.workspace.invoices.at(-1).id;
+  apiActor(supplier);const start=await paymentsRoute.POST(new Request("https://supplier-api.example.test/api/payments",{method:"POST",headers:{Origin:"https://supplier-api.example.test","Content-Type":"application/json"},body:JSON.stringify({operation:"checkout",input:{invoiceId}})}));assert.equal(start.status,200);const created=await start.json();
+  const list=await paymentsRoute.GET(new Request("https://supplier-api.example.test/api/payments"));const persisted=await list.json();assert.equal(persisted.processing.enabled,true);assert.equal(persisted.payments.at(-1).sessionId,created.sessionId);assert.equal(persisted.payments.at(-1).status,"open");
+  const scoped=await request(supplier,"supplier");assert.equal(scoped.data.workspace.checkouts.at(-1).createParams,undefined);assert.equal(scoped.data.workspace.checkouts.at(-1).connectionHash,undefined);
+ }finally{globalThis.fetch=originalFetch;delete globalThis.__supplierApiEnv.STRIPE_SECRET_KEY;}
 });
