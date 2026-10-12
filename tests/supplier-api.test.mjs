@@ -15,7 +15,7 @@ const hooks=registerHooks({resolve(specifier,context,next){
  if(specifier.endsWith("chatgpt-auth"))return {url:"data:text/javascript,export async function getChatGPTUser(){return globalThis.__supplierApiUser;}",shortCircuit:true};
  try{return next(specifier,context);}catch(e){if(specifier.startsWith(".")&&!/\.[a-z]+$/i.test(specifier))return next(specifier+".ts",context);throw e;}
 }});
-const stateRoute=await import("../app/api/state/route.ts"),supplierRoute=await import("../app/api/supplier/route.ts"),actionRoute=await import("../app/api/action/route.ts"),migrationRoute=await import("../app/api/migration/route.ts");
+const stateRoute=await import("../app/api/state/route.ts"),supplierRoute=await import("../app/api/supplier/route.ts"),actionRoute=await import("../app/api/action/route.ts"),migrationRoute=await import("../app/api/migration/route.ts"),libraryRoute=await import("../app/api/library/route.ts"),libraryFileRoute=await import("../app/api/library/[id]/file/route.ts");
 after(()=>{hooks.deregister();db.close();delete globalThis.__supplierApiEnv;delete globalThis.__supplierApiUser;});
 const owner={id:"owner",email:"owner@example.test"},supplier={id:"supplier",email:"supplier@example.test"},borrower={id:"borrower",email:supplier.email};
 async function request(actor,endpoint,method="GET",body,origin="https://supplier-api.example.test"){
@@ -69,4 +69,41 @@ test("legacy payment endpoint cannot reuse a verified shared receipt",async()=>{
 test("unsigned requests and non-owner imports are rejected",async()=>{
  assert.equal((await request(null,"supplier")).status,401);
  assert.equal((await request(supplier,"migration","POST",{version:0,transfer:{},apply:false})).status,403);
+});
+
+const helpObjects=new Map();
+globalThis.__supplierApiEnv.BUCKET={
+ async put(key,bytes){helpObjects.set(key,new Uint8Array(bytes));},
+ async head(key){const bytes=helpObjects.get(key);return bytes?{size:bytes.length}:null;},
+ async get(key,options){let bytes=helpObjects.get(key);if(!bytes)return null;if(options?.range)bytes=bytes.slice(options.range.offset,options.range.offset+options.range.length);return {body:new ReadableStream({start(controller){controller.enqueue(bytes);controller.close();}})};},
+ async delete(key){helpObjects.delete(key);},
+};
+let helpId="";
+function apiActor(actor){globalThis.__supplierApiUser=actor?{userId:actor.id,email:actor.email,displayName:actor.id,fullName:null}:null;}
+async function uploadHelp(actor,status="published",fileBody="%PDF-1.7\nSupplier guidance.",name="supplier-guide.pdf"){
+ apiActor(actor);const data=new FormData();data.set("title","Supplier guide");data.set("summary","Guidance for supplier accounts and advertising.");data.set("kind","document");data.set("status",status);data.set("file",new File([fileBody],name));
+ const result=await libraryRoute.POST(new Request("https://supplier-api.example.test/api/library",{method:"POST",headers:{Origin:"https://supplier-api.example.test"},body:data}));
+ return {status:result.status,data:await result.json()};
+}
+test("only the owner can publish help and uploaded types are validated",async()=>{
+ assert.equal((await uploadHelp(supplier)).status,403);
+ assert.equal((await uploadHelp(owner,"published","<html>not a PDF</html>")).status,400);
+ const uploaded=await uploadHelp(owner);assert.equal(uploaded.status,200);
+ apiActor(owner);const result=await libraryRoute.GET();const rows=await result.json();helpId=rows.find(r=>r.title==="Supplier guide").id;assert.equal(rows.some(r=>r.fileKey),false);
+});
+test("supplier help metadata and bytes are unavailable to unregistered or borrowed identities",async()=>{
+ apiActor(borrower);assert.equal((await libraryRoute.GET()).status,403);assert.equal((await libraryFileRoute.GET(new Request("https://supplier-api.example.test/api/library/"+helpId+"/file"))).status,404);
+ apiActor(supplier);const file=await libraryFileRoute.GET(new Request("https://supplier-api.example.test/api/library/"+helpId+"/file"));assert.equal(file.status,200);assert.equal(file.headers.get("X-Content-Type-Options"),"nosniff");assert.equal(await file.text(),"%PDF-1.7\nSupplier guidance.");
+});
+test("draft help is owner-only and file range delivery preserves protected bytes",async()=>{
+ assert.equal((await uploadHelp(owner,"draft")).status,200);apiActor(owner);const resources=await(await libraryRoute.GET()).json(),draft=resources.find(r=>r.status==="draft");
+ apiActor(supplier);assert.equal((await libraryFileRoute.GET(new Request("https://supplier-api.example.test/api/library/"+draft.id+"/file"))).status,404);
+ const partial=await libraryFileRoute.GET(new Request("https://supplier-api.example.test/api/library/"+helpId+"/file",{headers:{Range:"bytes=0-3"}}));assert.equal(partial.status,206);assert.equal(await partial.text(),"%PDF");
+});
+test("supplier support requests keep thread ownership and genuine sender roles",async()=>{
+ const ticket=await mutate(supplier,"supplier.ticket",{supplierId,subject:"Invoice question",category:"billing",body:"Can you explain this invoice?"});assert.equal(ticket.status,200);const id=ticket.data.workspace.tickets.at(-1).id;
+ assert.equal((await mutate(borrower,"supplier.message",{supplierId,ticketId:id,body:"Borrowed account"})).status,403);
+ const reply=await mutate(owner,"supplier.message",{supplierId,ticketId:id,body:"Here are your payment instructions."});assert.equal(reply.status,200);
+ const closed=await mutate(owner,"supplier.ticket_status",{supplierId,ticketId:id,status:"resolved"});assert.equal(closed.status,200);
+ const reopened=await mutate(supplier,"supplier.message",{supplierId,ticketId:id,body:"I have a further question."});assert.equal(reopened.status,200);assert.equal(reopened.data.workspace.tickets.find(t=>t.id===id).status,"open");
 });
