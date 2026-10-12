@@ -1,0 +1,31 @@
+name: Supplier transition checks
+on:
+  push:
+    branches: [feature/ccon-portals-integration]
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  domain:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Supplier domain checks
+        run: node --test tests/supplier-workflows.test.mjs tests/supplier-migration.test.mjs tests/supplier-persistence.test.mjs tests/supplier-payments.test.mjs tests/supplier-enquiry-ledger.test.mjs tests/supplier-catalog.test.mjs tests/supplier-notices.test.mjs
+  application:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm install --global pnpm@11.25.0
+      - run: pnpm install --frozen-lockfile
+      - run: node scripts/verify-sas.mjs
+      - run: node --experimental-transform-types --test tests/supplier-api.test.mjs
+      - run: pnpm exec tsc --noEmit
+      - run: pnpm run build

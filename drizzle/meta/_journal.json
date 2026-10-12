@@ -15,6 +15,13 @@
       "when": 1791215083456,
       "tag": "0001_plain_nomad",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1791676800000,
+      "tag": "0002_supplier_workspaces",
+      "breakpoints": true
     }
   ]
 }

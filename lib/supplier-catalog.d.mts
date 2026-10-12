@@ -1,0 +1,10 @@
+import type {Network,Supplier,Campaign} from "./sas-model";
+import type {Actor} from "./sas-actions";
+import type {Workspace} from "./supplier-workflows.mjs";
+export const defaultSupplierCriteria:any;
+export const catalogActions:string[];
+export function supplierCriteria(state:Network):any;
+export function catalogPlanFromSource(plan:Record<string,any>):Network["packages"][number];
+export function validateSupplierApplication(state:Network,workspace:Workspace,supplier:Supplier,input:any,actor:Actor,now?:string):Workspace;
+export function applyCatalogAction(state:Network,workspace:Workspace,action:string,input:any,actor:Actor):{state:Network;workspace:Workspace};
+export function campaignPurchaseQuote(state:Network,campaign:Campaign):{amountCents:number;currency:"CAD"|"USD";free:boolean;checkoutUrl:string;kind:string}|null;

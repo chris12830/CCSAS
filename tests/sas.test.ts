@@ -39,7 +39,7 @@ test("full-network packages include newly enabled apps and reduced package limit
  s.packages.find(p=>p.id==="bundle")!.maxApps=1;assert.ok(!eligibleAds(s,opts).some(c=>c.id==="ad-maple"));
 });
 test("supplier submissions are pending, bound to verified identity, and retain policy acceptance",()=>{
- const s=initialNetwork();const next=applyAction(s,"save_supplier",{name:"Real Supplier",contact:"Sam Supplier",email:"forged@example.test",website:"https://example.test",category:"Software & services",countries:["CA"],packageId:"single",currency:"CAD",accepted:true,sample:true},supplierActor);
+ const s=initialNetwork();const next=applyAction(s,"save_supplier",{name:"Real Supplier",contact:"Sam Supplier",email:"forged@example.test",website:"https://example.test",category:"Software & services",countries:["CA"],packageId:"single",currency:"CAD",accepted:true,policyVersion:s.settings.policyVersion,policyText:s.settings.policy,sample:true},supplierActor);
  const supplier=next.suppliers.at(-1)!;assert.equal(supplier.email,supplierActor.email);assert.equal(supplier.userId,supplierActor.userId);assert.equal(supplier.status,"pending");assert.equal(supplier.billingStatus,"unpaid");assert.equal(supplier.sample,false);assert.equal(supplier.policyText,s.settings.policy);assert.ok(supplier.policyAcceptedAt);
  assert.equal(s.suppliers.length,4);assert.throws(()=>applyAction(next,"supplier_status",{id:supplier.id,status:"approved"},supplierActor),/network owner/);
  assert.throws(()=>applyAction(next,"save_supplier",{...supplier,id:"sup-maple",accepted:true},supplierActor),/another supplier/);
@@ -63,4 +63,16 @@ test("policy revisions retain prior accepted text until renewed and credentials 
  const old=initialNetwork();const next=applyAction(old,"save_settings",{...old.settings,policy:old.settings.policy+" Prices must include the offer expiry date."},owner);
  assert.notEqual(next.settings.policyVersion,old.settings.policyVersion);assert.equal(next.suppliers[0].policyText,old.settings.policy);
  next.apps[0].integrationHash="secret-digest";const safe=publicState(next);assert.equal(safe.apps[0].integrationHash,undefined);assert.equal(safe.apps[0].hasKey,true);
+});
+
+test("administrator-created profiles cannot manufacture supplier consent",()=>{
+ const state=initialNetwork();
+ const next=applyAction(state,"save_supplier",{name:"New Company",contact:"Company Representative",email:"new-company@example.test",website:"https://example.test",category:"Software & services",countries:["CA"],packageId:"single",currency:"CAD",accepted:true},owner);
+ const created=next.suppliers.at(-1)!;assert.equal(created.policyAcceptedAt,"");assert.equal(created.policyText,"");assert.throws(()=>applyAction(next,"supplier_status",{id:created.id,status:"approved"},owner),/acceptance/);
+});
+test("matching email cannot bypass a bound supplier identity through legacy actions",()=>{
+ const state=realNetwork(),existing=state.suppliers[0];existing.userId="bound-user";
+ const actor={userId:"other-user",email:existing.email,owner:false};
+ assert.throws(()=>applyAction(state,"save_supplier",{...existing,accepted:true,policyVersion:state.settings.policyVersion,policyText:state.settings.policy},actor),/another supplier/);
+ assert.throws(()=>applyAction(state,"save_campaign",{...state.campaigns[0],submit:true},actor),/another supplier/);
 });
