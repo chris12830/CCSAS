@@ -9,5 +9,5 @@ export function emptyWorkspace():Workspace;
 export function normalizeWorkspace(value:unknown):Workspace;
 export function ownsSupplier(supplier:Network["suppliers"][number],actor:Actor):boolean;
 export function scopeWorkspace(value:Workspace,network:Network,actor:Actor):Workspace;
-export function nextRecurringDate(value:string,cadence:"monthly"|"yearly"):string;
+export function nextRecurringDate(value:string,cadence:"monthly"|"yearly",anchor?:string):string;
 export function executeSupplierWorkflow(previous:Network,workspace:Workspace,action:string,input:unknown,actor:Actor,context?:{now?:string;date?:string;id?:()=>string}):{state:Network;workspace:Workspace};
