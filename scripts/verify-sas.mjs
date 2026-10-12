@@ -10,5 +10,6 @@ for(const file of ['lib/sas-model.ts','lib/sas-actions.ts','tests/sas.test.ts'])
  fs.mkdirSync(path.dirname(target),{recursive:true});
  fs.writeFileSync(target,ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,esModuleInterop:true}}).outputText);
 }
+for(const file of ['lib/supplier-catalog.mjs','lib/supplier-workflows.mjs'])fs.copyFileSync(file,path.join(output,file));
 const result=spawnSync(process.execPath,['--test',path.join(output,'tests/sas.test.js')],{stdio:'inherit'});
 process.exit(result.status??1);
