@@ -6,5 +6,7 @@ declare namespace Cloudflare {
     SAS_CCON_APP_KEY?: string;
     STRIPE_SECRET_KEY?: string;
     STRIPE_WEBHOOK_SECRET?: string;
+    RESEND_API_KEY?: string;
+    SAS_MAIL_FROM?: string;
   }
 }

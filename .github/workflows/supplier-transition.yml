@@ -15,7 +15,7 @@ jobs:
         with:
           node-version: '24'
       - name: Supplier domain checks
-        run: node --test tests/supplier-workflows.test.mjs tests/supplier-migration.test.mjs tests/supplier-persistence.test.mjs tests/supplier-payments.test.mjs tests/supplier-enquiry-ledger.test.mjs tests/supplier-catalog.test.mjs
+        run: node --test tests/supplier-workflows.test.mjs tests/supplier-migration.test.mjs tests/supplier-persistence.test.mjs tests/supplier-payments.test.mjs tests/supplier-enquiry-ledger.test.mjs tests/supplier-catalog.test.mjs tests/supplier-notices.test.mjs
   application:
     runs-on: ubuntu-latest
     steps:

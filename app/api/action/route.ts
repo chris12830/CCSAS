@@ -3,6 +3,7 @@ import {network,saveNetwork,hashKey,summaries} from "../../../lib/sas-db";
 import {publicState} from "../../../lib/sas-model";
 import {applyAction} from "../../../lib/sas-actions";
 import {catalogActions,applyCatalogAction} from "../../../lib/supplier-catalog.mjs";
+import {queueSupplierNotice} from '../../../lib/supplier-notices.mjs';
 import {z} from "zod";
 import {executeSupplierWorkflow,workflowActions} from "../../../lib/supplier-workflows.mjs";
 export async function POST(request:Request){
@@ -28,6 +29,7 @@ export async function POST(request:Request){
     }else if(catalogActions.includes(action))({state:next,workspace}=applyCatalogAction(row.state,row.workspace,action,input,{userId:user.userId,email:user.email,owner}));
     else if(workflowActions.includes(action))({state:next,workspace}=executeSupplierWorkflow(row.state,row.workspace,action,input,{userId:user.userId,email:user.email,owner}));
     else next=applyAction(row.state,action,input,{userId:user.userId,email:user.email,owner});
+    workspace=queueSupplierNotice(workspace,next,action,input);
     await saveNetwork(next,row.version,workspace,row.workspace);
     return Response.json({state:publicState(next),version:row.version+1,workspace,summary:await summaries(),key});
   }catch(error){const message=error instanceof z.ZodError?error.issues.map(i=>i.message).join(" "):error instanceof Error?error.message:"Your change could not be saved.";
