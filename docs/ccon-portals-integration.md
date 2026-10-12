@@ -1,11 +1,7 @@
-# ChildCareOwnersNetwork to CCSAS supplier centralization
+# CCON supplier portal replacement
 
-Shared supplier workspaces and migration foundations are implemented on `feature/ccon-portals-integration`. CCON's companion branch is `feature/ccsas-supplier-transition`. Production migration and full parity remain unfinished.
+The development implementation replaces CCON's shared supplier portal and management screens with CCSAS, while CCON retains member, offer, enquiry and group-order workflows. Checkout, financial event replay, supplier/campaign bindings, catalog/criteria, support and protected file delivery are implemented and checked.
 
-CCSAS owns the new profile, consent, account lifecycle, billing, royalty and supplier/admin messaging workflows. CCON keeps member data, hubs, offers, private enquiries and group orders. An authenticated application connector transfers approved advertising and supplier eligibility; it does not read another project's database.
+The live replacement is blocked by the disconnected execution environment; no production transfer or deployment has occurred. See [the current handoff](supplier-transition-handoff.md) and [pinned evidence](supplier-transition-validation.json) for 234 checks, tested commits, retained requirements and the remaining staging/release gates.
 
-See [supplier transition handoff](supplier-transition-handoff.md) for implemented functionality, preserved requirements, migration sequence, exact verification scope and SUP-01 through SUP-07. See [validation evidence](supplier-transition-validation.json) for pinned check results.
-
-The initial specification-only branch was reconciled with CCSAS main so the existing DocTrain feed integration is preserved. Both repositories use additive D1 migrations and development branches. Do not merge into main without owner approval.
-
-Live CCON supplier management remains in place. The transition defaults to local mode, and cutover is blocked until checkout, enquiry finance, new supplier/ad linking, catalog/criteria/support parity and staging checks pass. No live transfer is established by saving this branch.
+Both changes stay on development branches. Main merges require owner approval.

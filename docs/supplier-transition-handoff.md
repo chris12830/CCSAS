@@ -1,63 +1,69 @@
-# Supplier centralization handoff — 11 October 2026
+# Supplier portal replacement handoff — 12 October 2026
 
-Status: development implementation. Production cutover and full CCON feature parity are unfinished.
+The replacement implementation is saved on the development branches and passes CI. The production replacement remains unfinished: the execution environment is disconnected, so real signed-in staging, production migration and publication have not run.
 
-Owner direction: CCSAS will own shared supplier services; CCON retains members, hubs, offers, private enquiries and group purchasing. Work stays on development branches. Do not merge into main without owner approval.
+Owner direction: CCSAS owns shared supplier services. CCON retains members, Resource Hubs, offers, private enquiries and group purchasing. Do not merge into main without owner approval.
 
-## Saved implementation
+## Implemented replacement
 
-- CCSAS owner and supplier workspaces: company details, review/request-info, policy and exact-price consent, lifecycle holds/cancellation/closure, messages/unread status, invoices, payment claims, independent owner receipt verification, royalty sales/refunds and recurring service receipts.
-- Immutable acceptance records and auditable financial/account changes. Money in the new ledger uses integer cents and a currency. Closing an account retains financial, consent and support history.
-- Additive D1 migration 0002; existing network JSON and advertising events remain. Workspace records have their own identities and supplier index.
-- Atomic network-version update plus token-guarded record writes in one D1 transaction. Changed records are grouped using JSON statements to respect query limits. Oversized imports fail before any writes.
-- Strict bound identity: a matching email cannot override an existing user ID.
-- Supplier and owner APIs scope data and decisions on the server. Admin preview is read-only and administrators cannot manufacture supplier consent.
-- Three ad placements, selected-app hub IDs, normal/premium ticker metadata, CA/US targeting and account/expiry gating.
-- Owner migration preview/import endpoint and UI, with allowlisted CCON export format and a server-calculated fingerprint. Same-snapshot imports are idempotent; conflicts and different prior snapshots stop import.
-- The importer preserves original identity bindings, consent text/time, annual pricing/currency, financial receipts, royalty due dates/refunds/recurrence, supplier support and raw allowlisted source records.
-- CCON development branch includes additive migration 0028, owner export/control tools, a connector and portal/admin gateway. Mode defaults to local.
-- CCON activation deliberately fails while `supplierParityReady=false`. The existing live supplier portal remains until the outstanding requirements below are completed.
+- CCON no longer renders its supplier application/portal, supplier management, membership management or payment-link management screens. The four retired root components are removed from the development branch; Git history and the sealed version 68 handoff preserve the earlier source.
+- Supplier application and service links open CCSAS with CCON application context. Legacy menu hashes resolve to the new gateway. CCON supplies separate local offer and enquiry screens, and keeps group orders and restricted hub browsing.
+- CCSAS owns company verification, criteria, genuine policy/price/royalty acceptance, approval or information requests, account holds/closure, invoices and support conversations. Closing accounts preserves history and obligations.
+- Source annual membership prices, currencies, benefits, separate ticker/premium/static rates and explicit free ticker rules are imported. Preserved private contracts cannot be selected by another supplier. Historical accepted prices/rates stay unchanged.
+- Separate campaign invoices and verified receipts fund paid advertising. Free tickers need approval without a fabricated receipt. Static campaigns require the accepted annual advertising membership and a separate paid month; CCON keeps its shared 30-second rotation.
+- Stripe checkout reserves the server invoice before contacting Stripe, retries the same reservation, verifies session/intent/charge identity, amount and currency, quarantines changed/refunded/disputed receipts and handles signed webhooks. Test-mode payments never activate live memberships or settle live invoices.
+- Original pending provider payments block source freeze, import application and activation until settled, expired or reconciled. Imported verified processor intents cannot be reused as a new payment.
+- Stable directory, identity and campaign mappings support new CCSAS suppliers/ads as well as existing source IDs. Mirrors cannot promote or overwrite members/administrators, or reassign another supplier's binding.
+- CCON private quotes and purchase reports stay local. Enquiry mutation and a minimal financial outbox entry commit atomically. CCSAS applies each source event once using the accepted quote's currency/rate; local financial rows are projections created only from the central receipt.
+- A failed connection or lost response after central commit retries the same event. Recurring registrations create no automatic royalties; actual period receipts preserve month-end/leap-year anchors and original due instants.
+- Shared billing/profile/campaign/support writes and legacy automatic payment synchronization are retired after cutover. Member support stays in CCON. Owner-only retry tools expose pending shared delivery.
+- Support tickets, replies, unread history, help metadata and protected uploads are in CCSAS. Existing CCON files retain protected source URLs and source access checks; their bytes stay preserved for member/shared-history continuity. New CCSAS uploads use its BUCKET binding and audience checks with range delivery.
+- Supplier approval/account/message email notices are durable and owner-triggered. Without verified sender/provider configuration they remain visibly pending. No real notifications were sent in this work.
+- All workspace collections, including reservations, mail setup, replay receipts, tickets and help, use the same token/version-guarded D1 record writer. Accepted evidence remains immutable.
 
-## Current evidence
-
-Both development implementations pass automated checks on these exact source commits:
+## Exact verification
 
 | Project | Validated source commit | Checks | TypeScript / build | CI |
 | --- | --- | --- | --- | --- |
-| CCSAS | `4349927c943cca9bd51616fb78d31580fad6db60` | 58 passed: 21 workflow, 14 migration, 4 SQLite persistence, 11 SAS regression and 8 scoped API checks | Passed / passed | [Run 38169169107](https://github.com/chris12830/CCSAS/actions/runs/38169169107) |
-| CCON | `59ac1cd6a6aa5b81caa230df2fca7fd0644d9284` | 126 passed: 118 existing regressions and 8 transition checks | Passed / passed | [Run 38168596484](https://github.com/chris12830/child-care-owners-network/actions/runs/38168596484) |
+| CCSAS | `ad020c3253f037c5b7a91778b228cb7fcc423c21` | 95 passed | Passed / passed | [Run 38260855134](https://github.com/chris12830/CCSAS/actions/runs/38260855134) |
+| CCON | `a5158dd81aafd5160360089e85836f311b23ea3a` | 135 repository checks + 4 paired API checks passed | Passed / passed | [Run 38261013342](https://github.com/chris12830/child-care-owners-network/actions/runs/38261013342) |
 
-SQLite checks apply actual repository migrations and exercise transaction rollback, stale-write isolation, scoped permissions, receipt duplication, export privacy and activation/rollback guards. Authentication and Cloudflare bindings are test substitutes. These results do not prove real signed-in authentication, browser journeys, provider operation, staging deployment or production reconciliation.
+The paired workflow checks out CCSAS at the exact commit above. Tests execute both real API handlers with SQLite, and cover anonymity, one-time/recurring royalties, failed delivery, and a lost response after the central transaction has committed. R2/provider/authentication bindings are test substitutes; the results do not prove browser layout, real sign-in, live provider operation or production data reconciliation.
 
-Review the [CCSAS draft pull request](https://github.com/chris12830/CCSAS/pull/1) and [CCON draft pull request](https://github.com/chris12830/child-care-owners-network/pull/1). Neither is merged. Evidence-only follow-up commits leave the validated application files unchanged. See [pinned validation evidence](supplier-transition-validation.json) for commands, scope and limits.
+See [machine-readable validation](supplier-transition-validation.json). Documentation-only follow-up commits leave the validated application files unchanged.
 
-No production data export/import, account mutation, source freeze or cutover has been performed. No Site version has been published. Local command execution is unavailable in this session; source work and repository verification use GitHub. Official Site source checkout/push, deployment and signed-in staging journeys remain necessary.
+Review: [CCSAS draft PR](https://github.com/chris12830/CCSAS/pull/1) and [CCON draft PR](https://github.com/chris12830/child-care-owners-network/pull/1).
 
-## Unfinished work and release gates
+## Production state and blocker
 
-| ID | Work required before cutover | Acceptance |
-| --- | --- | --- |
-| SUP-01 | Port provider checkout/session reconciliation and pending-payment handling into CCSAS. External checkout links and manual verified invoices are present; CCON Stripe parity is not complete. | Provider outage, duplicate receipt, wrong currency, abandoned checkout, stale quote and refund journeys pass in test mode. No pending source payment is lost. |
-| SUP-02 | Connect CCON enquiry purchase matching and recurring receipts to a central ledger with a transactional outbox and idempotent delivery. Shared financial actions are currently gated during transition. | Private member data stays local; each actual receipt produces exactly one royalty; no ledger remains writable in two systems. |
-| SUP-03 | Support new CCSAS suppliers/campaigns in CCON with explicit identity/directory and ad-ID mappings. The current feed adapter accepts imported CCON ad IDs only. | New approved/funded suppliers can advertise and receive local enquiries without exposing member records. |
-| SUP-04 | Complete membership/campaign fee catalog, premium/static purchases, supplier criteria and onboarding authorization/privacy parity. Imported contract/criteria snapshots are retained; current simpler SAS packages do not replace every CCON rule. | Tier 1 and annual Tier 2 pricing, fees, shared hub/static rotation and royalty terms match accepted contracts; no category exclusivity is reintroduced. |
-| SUP-05 | Complete supplier support library/private file delivery, notification and analytics event forwarding. Imported supplier messages are normalized; CCON support files and member threads remain in source. | Each supplier sees only authorized files and campaign statistics; source support/history is retained. |
-| SUP-06 | Apply migrations to test copies, configure application keys, run signed-in owner/supplier/member journeys and failure/rollback tests. | Both builds and all regressions pass on final commits; data counts and currency totals reconcile; exports contain no member data/secrets. |
-| SUP-07 | Complete deployment and exact-source verification, accept rollout, replace CCON common supplier controls and retire duplicate endpoints. | Owner approves main merges and release; both saved Site versions match the reviewed source; production smoke tests pass. |
+Both main branches and live publications are unchanged. CCSAS remains version 3; CCON remains version 68. No production supplier data was exported/imported, no source freeze or account change occurred, and no live replacement was published.
 
-## Migration sequence
+The selected environment reports `409 Conflict, environment_offline: Environment is not connected.` No command execution tools are available. Official Site source checkout/push, packaging, publishing, signed-in staging and real migration cannot be completed until that environment is restored.
 
-1. Complete SUP-01 through SUP-05 and keep source mode local.
-2. Apply CCSAS 0002 and CCON 0028 to test copies; do not change applied migrations.
-3. Generate an owners application key in CCSAS. Configure it server-side as CCON CCSAS_APP_KEY; configure CCSAS_BASE_URL. A runtime SAS_CCON_APP_KEY may seed the CCSAS key hash. Keep all keys out of browser code and exports.
-4. CCON Super Admin downloads GET /api/admin/ccsas/export. CCSAS owner previews it in Supplier migration; no data is saved by preview.
-5. After staging acceptance and backups, freeze supplier writes, settle in-flight payments and wait for writes to finish. Export the exact frozen snapshot. Review conflicts and totals, then import that fingerprint. Never infer consent where original evidence is missing.
-6. Reconcile supplier counts, currency totals, agreements, recurring periods, payment status, source support and member enquiry IDs. Prepare rollback reconciliation for any later CCSAS writes.
-7. Only after all gates pass, update the readiness guard and activate the verified connector. Gate duplicate shared financial/account writes. CCON member/group/enquiry functionality remains local.
-8. Remove duplicate UI/APIs after acceptance and a rollback window. Preserve history and source backups.
+## Release gates still open
 
-An immediate rollback before cutover restores local writes. After cutover, a boolean rollback is refused: freeze CCSAS, reconcile new transactions and identity/consent changes back into CCON, verify a backup/restore and then restore local authority. A static old snapshot cannot be called a safe data rollback.
+| Gate | Required work |
+| --- | --- |
+| SUP-06 | Restore execution; stage both projects with real sign-in; apply migrations to test copies; verify provider and file/mail configuration, exact source contracts, directory/campaign links, member privacy, group orders, failure handling, freeze concurrency, currency totals and backup/restore. |
+| SUP-07 | Push exact reviewed source to both Site source repositories; publish matching saved versions; perform the frozen-source import and reconciliation; record owner acceptance; enable cutover; verify live role journeys and rollback readiness. Owner approval is required before main merges. |
 
-Reference: Cloudflare D1 batch transactions and limits:
-- https://developers.cloudflare.com/d1/worker-api/d1-database/#batch
-- https://developers.cloudflare.com/d1/platform/limits/
+SUP-01 through SUP-05 have implementation and automated checks. Their real-provider, contract, sign-in and hosted-data acceptance belongs to SUP-06; they are not certified as production-complete.
+
+## Configuration and rollout
+
+1. Keep source mode local while verifying the release. Settle or expire old source checkouts before a freeze. Retain database/file backups and the prior saved Site versions.
+2. Preserve CCSAS migration 0002 and CCON 0028; append/apply CCON 0029 for bindings and outbox. Existing migration history and the sealed Laravel handoff remain unchanged. CCSAS declares BUCKET for new protected help files.
+3. Configure the CCSAS owners application key server-side as CCON CCSAS_APP_KEY and CCSAS_BASE_URL. SAS_CCON_APP_KEY can seed the CCSAS key hash. Keep keys out of browser code, exports and Git.
+4. For provider staging, configure CCSAS STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET; point verified webhooks to /api/payments/webhook. Enable the matching connection as owner. Test receipts remain non-funding.
+5. For mail, configure RESEND_API_KEY and SAS_MAIL_FROM with a verified sender. The owner explicitly sends pending notifications from Supplier services. Check provider delivery records, including ambiguous or old retries, before repeating a send.
+6. Stage owner/supplier/member journeys and finance/file/provider outages. Complete SUP-06, including late source writes/callbacks during freeze and restore/reconciliation. Do not infer consent or payment from a missing source record.
+7. Publish the prepared sources in a controlled migration window. CCON's owner export/control endpoints serve the existing records; the new gateway explains the transfer while mode is local/frozen.
+8. Freeze supplier writes and let in-flight writes finish. Download /api/admin/ccsas/export, preview in CCSAS, reconcile conflicts/counts/currency totals, and apply the exact frozen fingerprint. Extra supplier criteria, registration details and library metadata are optional-compatible additions to the version 1 allowlist; member-only resources are rejected.
+9. Set CCSAS_RELEASE_READY=true only after signed-in staging and reconciliation acceptance. The activation endpoint still requires every owner acceptance check and the exact current frozen import receipt. The source public catalog and protected legacy file checks then delegate to CCSAS.
+10. Verify live common supplier services, new supplier/campaign mappings, local offers/enquiries/groups, central royalty receipts and protected downloads. Record the exact saved Site versions and source commits in this handoff.
+
+## Rollback and retention
+
+Before cutover, local writes may be restored after reviewing the current source state. After cutover, a boolean rollback is refused: freeze shared writes, reconcile all newer CCSAS transactions/consent/lifecycle changes into the source, verify restoration, then restore local authority. An old snapshot alone is not a safe rollback.
+
+Historical accounts, consent, prices, receipts, support and private member references are retained. Legacy backend modules remain available for controlled pre-cutover reconciliation and historical recovery; the source UI no longer renders them, and shared endpoints are gated after cutover. The Laravel conversion remains a separate unfinished workstream.

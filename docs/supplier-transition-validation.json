@@ -1,93 +1,108 @@
 {
-  "date": "2026-10-11",
-  "status": "development checks passed; full supplier transfer and production cutover unfinished",
-  "production_migration": false,
-  "site_deployed": false,
-  "main_merge": false,
+  "date": "2026-10-12",
+  "status": "replacement implementation verified in GitHub; signed-in staging, production transfer and deployment blocked",
   "ccsas": {
     "repository": "chris12830/CCSAS",
     "branch": "feature/ccon-portals-integration",
-    "code_commit": "4349927c943cca9bd51616fb78d31580fad6db60",
-    "draft_pr": "https://github.com/chris12830/CCSAS/pull/1",
-    "run_id": 38169169107,
-    "url": "https://github.com/chris12830/CCSAS/actions/runs/38169169107",
+    "code_commit": "ad020c3253f037c5b7a91778b228cb7fcc423c21",
+    "run_id": 38260855134,
+    "url": "https://github.com/chris12830/CCSAS/actions/runs/38260855134",
     "jobs": {
-      "application": 114557938276,
-      "domain": 114557938461
+      "application": 114850670818,
+      "domain": 114850671211
     },
     "tests": {
-      "supplier_workflows": 21,
+      "workflow": 21,
       "migration": 14,
-      "sqlite_atomic_persistence": 4,
-      "sas_regressions": 11,
-      "supplier_api": 8,
-      "total": 58,
+      "sqlite_persistence": 4,
+      "checkout": 13,
+      "enquiry_ledger": 8,
+      "catalog": 9,
+      "notices": 2,
+      "regressions": 11,
+      "scoped_api_and_help": 13,
+      "total": 95,
       "failed": 0
     },
     "typecheck": "passed",
     "build": "passed",
-    "commands": [
-      "node --test tests/supplier-workflows.test.mjs tests/supplier-migration.test.mjs tests/supplier-persistence.test.mjs",
-      "node scripts/verify-sas.mjs",
-      "node --experimental-transform-types --test tests/supplier-api.test.mjs",
-      "pnpm exec tsc --noEmit",
-      "pnpm run build"
-    ]
+    "draft_pr": "https://github.com/chris12830/CCSAS/pull/1"
   },
   "ccon": {
     "repository": "chris12830/child-care-owners-network",
     "branch": "feature/ccsas-supplier-transition",
-    "code_commit": "59ac1cd6a6aa5b81caa230df2fca7fd0644d9284",
-    "draft_pr": "https://github.com/chris12830/child-care-owners-network/pull/1",
-    "run_id": 38168596484,
-    "url": "https://github.com/chris12830/child-care-owners-network/actions/runs/38168596484",
+    "code_commit": "a5158dd81aafd5160360089e85836f311b23ea3a",
+    "run_id": 38261013342,
+    "url": "https://github.com/chris12830/child-care-owners-network/actions/runs/38261013342",
     "jobs": {
-      "application": 114556232808
+      "application": 114851208958
     },
     "tests": {
       "existing_regressions": 118,
-      "supplier_transition": 8,
-      "total": 126,
+      "transition": 8,
+      "directory_and_campaign_bindings": 9,
+      "paired_real_api_handlers": 4,
+      "total": 139,
       "failed": 0
     },
+    "paired_ccsas_commit": "ad020c3253f037c5b7a91778b228cb7fcc423c21",
     "typecheck": "passed",
     "build": "passed",
-    "commands": [
-      "node --experimental-transform-types --test tests/*.test.mjs",
-      "pnpm exec tsc --noEmit",
-      "pnpm run build"
+    "draft_pr": "https://github.com/chris12830/child-care-owners-network/pull/1",
+    "removed_components": [
+      "src/components/SupplierPortal.tsx",
+      "src/components/SupplierManagement.tsx",
+      "src/components/SupplierMarketingAdmin.tsx",
+      "src/components/SupplierPaymentLinksAdmin.tsx"
     ]
   },
-  "total_checks": 184,
-  "evidence_scope": [
-    "Real Node execution in GitHub Actions on the pinned source commits.",
-    "Real SQLite applies the repository SQL migrations and exercises atomic batches, scoped APIs, export privacy, readiness and rollback guards.",
-    "Authentication and Cloudflare environment bindings are test substitutes; signed-in production authentication is not proven.",
-    "Later evidence-only commits do not change the validated application files."
+  "total_checks": 234,
+  "verification_scope": [
+    "GitHub Actions executes real Node/SQLite and the real API handlers on the pinned commits.",
+    "Paired checks use both repositories and prove private enquiry handling, central royalties, recurring receipts, failed delivery retry and recovery after a committed central response is lost.",
+    "Cloudflare bindings, authentication headers, R2 and external payment/mail providers are test substitutes.",
+    "Later documentation-only commits leave the validated application files unchanged."
   ],
   "not_tested": [
-    "Live payment providers or production credentials",
-    "Production data export/import, supplier migration or financial reconciliation",
-    "Real signed-in owner/supplier/member browser journeys",
-    "Actual Cloudflare deployment, Site source checkout/push or staging backup/restore",
-    "Complete CCON supplier feature parity"
+    "Real ChatGPT sign-in and browser journeys",
+    "Live Stripe, Resend or hosted R2 operation",
+    "Production data export/import, counts or currency reconciliation",
+    "Backup/restore and concurrency during a real source freeze",
+    "Official Site source push, migrations and deployment"
   ],
-  "safety_state": {
-    "ccon_mode_default": "local",
-    "ccon_supplier_parity_ready": false,
-    "activation": "blocked",
-    "supplier_records_removed": false,
-    "source_main": "6fd5ee85ec16b1d03e0ec6ea6c78442486ba2431",
-    "ccsas_main": "7938e97a70c60a1d307605fc04a264e3b4b506b4"
+  "runtime_blocker": {
+    "environment_status": "failed",
+    "error": "409 Conflict, environment_offline: Environment is not connected.",
+    "exec_tools_available": false
   },
-  "execution_blocker": "Local command execution is unavailable; official Site source checkout/push, deployment and signed-in staging cannot be completed in this session.",
-  "unfinished_gate_ids": [
-    "SUP-01",
-    "SUP-02",
-    "SUP-03",
-    "SUP-04",
-    "SUP-05",
+  "production_migration": false,
+  "site_deployed": false,
+  "main_merge": false,
+  "live_sites": {
+    "ccsas": {
+      "version": 3,
+      "url": "https://supplier-advertising-system.christ519.chatgpt.site"
+    },
+    "ccon": {
+      "version": 68,
+      "url": "https://child-care-owners-network-v2.christ519.chatgpt.site"
+    }
+  },
+  "release_state": {
+    "ccon_mode_default": "local",
+    "required_server_flag": "CCSAS_RELEASE_READY=true after staging acceptance",
+    "activation": "blocked until release flag, owner acceptance and exact frozen fingerprint pass",
+    "source_records_deleted": false
+  },
+  "open_release_gates": [
     "SUP-06",
     "SUP-07"
-  ]
+  ],
+  "implementation_gate_status": {
+    "SUP-01": "implemented; provider staging acceptance pending",
+    "SUP-02": "implemented; real-data reconciliation and concurrency acceptance pending",
+    "SUP-03": "implemented; signed-in directory/enquiry staging pending",
+    "SUP-04": "implemented; real contract/currency/onboarding acceptance pending",
+    "SUP-05": "implemented; hosted file/sign-in/mail acceptance pending"
+  }
 }
