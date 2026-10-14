@@ -1,11 +1,12 @@
 import {execFileSync} from 'node:child_process';
-import {mkdtempSync,rmSync,chownSync} from 'node:fs';
+import {mkdtempSync,rmSync,chmodSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {randomBytes} from 'node:crypto';
 import assert from 'node:assert/strict';
 const directory=mkdtempSync(join(tmpdir(),'ccsas-image-')),image=process.argv[2]||'ccsas-staging',name='ccsas-vps-smoke',password=randomBytes(24).toString('hex');
-chownSync(directory,1000,1000);
+// Ephemeral CI fixture only; production uses a private UID-1000 directory.
+chmodSync(directory,0o777);
 const common=['--rm','-v',directory+':/data','-e','SAS_BASE_URL=https://staging.ccsas.test'];
 const docker=(args,input)=>execFileSync('docker',args,{input,encoding:'utf8',stdio:['pipe','pipe','pipe']});
 async function ready(){for(let i=0;i<40;i++){try{if((await fetch('http://127.0.0.1:3100/login')).status===200)return;}catch{}await new Promise(r=>setTimeout(r,500));}throw new Error('Container did not become ready.');}
@@ -23,5 +24,5 @@ try{
  docker(['restart',name]);await ready();assert.equal((await api('/api/state',null,cookie)).status,200);
  assert.equal((await api('/api/auth',{operation:'logout'},cookie)).status,200);assert.equal((await api('/api/state',null,cookie)).status,401);
  console.log('Image smoke passed: migrations, owner/supplier access, forged-header rejection, secure sessions, persistence across restart, logout.');
-}finally{docker(['rm','-f',name]);rmSync(directory,{recursive:true,force:true});}
+}finally{try{docker(['rm','-f',name]);}catch{}try{docker(['run','--rm','--user','0','-v',directory+':/data',image,'node','--input-type=module','-e',"import {readdirSync,rmSync} from 'node:fs';for(const name of readdirSync('/data'))rmSync('/data/'+name,{recursive:true,force:true});"]);}finally{rmSync(directory,{recursive:true,force:true});}}
 
