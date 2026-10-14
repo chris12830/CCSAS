@@ -2,7 +2,7 @@ FROM node:24-bookworm-slim AS build
 WORKDIR /app
 RUN npm install --global pnpm@11.25.0
 COPY . .
-RUN pnpm install --no-frozen-lockfile && pnpm test && pnpm exec tsc --noEmit && pnpm build
+RUN pnpm install --no-frozen-lockfile && pnpm test && node --experimental-transform-types --test tests/vps-auth-api.test.mjs && pnpm exec tsc --noEmit && pnpm build
 FROM node:24-bookworm-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production HOSTNAME=0.0.0.0 PORT=3100 SAS_DATA_DIR=/data

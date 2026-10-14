@@ -16,7 +16,12 @@ jobs:
       - run: npm install --global pnpm@11.25.0
       - run: pnpm install --no-frozen-lockfile
       - run: pnpm test
+      - run: node --experimental-transform-types --test tests/vps-auth-api.test.mjs
       - run: pnpm exec tsc --noEmit
       - run: pnpm build
       - name: Build deployment image
         run: docker build -f deploy/Dockerfile -t ccsas-staging .
+      - name: Run container access and persistence checks
+        run: node scripts/vps-image-smoke.mjs ccsas-staging
+      - name: Record resolved dependency lock for reviewed release
+        run: node -e "console.log('VPS_LOCK_BASE64='+require('fs').readFileSync('pnpm-lock.yaml').toString('base64'))"
