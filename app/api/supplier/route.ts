@@ -1,3 +1,4 @@
+import {applicationOrigin} from '../../../lib/vps-origin';
 import {getChatGPTUser} from "../../chatgpt-auth";
 import {network,saveNetwork,supplierSummaries} from "../../../lib/sas-db";
 import {publicState,type Network} from "../../../lib/sas-model";
@@ -19,7 +20,7 @@ export async function GET(){try{
   const row=await network();return Response.json(await payload(row.state,row.workspace,row.version,user),{headers:{"Cache-Control":"no-store"}});
 }catch{return Response.json({error:"The supplier portal could not load. Please try again."},{status:503});}}
 export async function POST(request:Request){try{
-  const origin=request.headers.get("origin");if(origin&&origin!==new URL(request.url).origin)return Response.json({error:"Invalid request origin."},{status:403});
+  const origin=request.headers.get("origin");if(origin!==applicationOrigin())return Response.json({error:"Invalid request origin."},{status:403});
   const user=await getChatGPTUser();if(!user)return Response.json({error:"Sign in before submitting."},{status:401});
   const {action,input,version}=z.object({action:z.string(),input:z.unknown(),version:z.number().int().nonnegative()}).parse(await request.json()),row=await network();
   if(version!==row.version)return Response.json({error:"The network has changed. Refresh before submitting."},{status:409});
@@ -37,3 +38,5 @@ export async function POST(request:Request){try{
   await saveNetwork(next,row.version,workspace,row.workspace);
   return Response.json(await payload(next,workspace,row.version+1,user),{headers:{"Cache-Control":"no-store"}});
 }catch(error){return Response.json({error:error instanceof Error?error.message:"Submission could not be saved."},{status:typeof (error as {status?:unknown})?.status==="number"?(error as {status:number}).status:400});}}
+
+

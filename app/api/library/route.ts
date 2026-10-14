@@ -1,3 +1,4 @@
+import {applicationOrigin} from '../../../lib/vps-origin';
 import {env} from "../../../lib/vps-runtime";
 import {getChatGPTUser} from "../../chatgpt-auth";
 import {network,saveNetwork} from "../../../lib/sas-db";
@@ -5,7 +6,7 @@ import {scopeWorkspace,ownsSupplier} from "../../../lib/supplier-workflows.mjs";
 const response=(value:unknown,status=200)=>Response.json(value,{status,headers:{"Cache-Control":"private, no-store"}});
 export async function GET(){try{const user=await getChatGPTUser();if(!user)return response({error:"Sign in to view supplier help."},401);const row=await network(),owner=row.ownerId===user.userId;if(!owner&&!row.state.suppliers.some(s=>ownsSupplier(s,{userId:user.userId,email:user.email,owner:false})))return response({error:"Supplier access required."},403);return response(scopeWorkspace(row.workspace,row.state,{userId:user.userId,email:user.email,owner}).library.map(({fileKey,...r})=>({...r,url:fileKey?"/api/library/"+encodeURIComponent(r.id)+"/file":r.url})));}catch{return response({error:"Help resources are unavailable."},503);}}
 export async function POST(request:Request){try{
- if(request.headers.get("Origin")!==new URL(request.url).origin)return response({error:"Invalid request origin."},403);
+ if(request.headers.get("Origin")!==applicationOrigin())return response({error:"Invalid request origin."},403);
  const user=await getChatGPTUser(),row=await network();if(!user||row.ownerId!==user.userId)return response({error:"Only the network owner can publish supplier help."},403);
  if(!env.BUCKET)return response({error:"Supplier help file storage is not configured."},503);
  if(Number(request.headers.get("Content-Length"))>26*1024*1024)return response({error:"Upload a file up to 25 MB."},413);
@@ -33,3 +34,5 @@ export async function POST(request:Request){try{
  try{await saveNetwork(row.state,row.version,row.workspace);}catch(e){if(uploaded)await env.BUCKET.delete(uploaded).catch(()=>{});throw e;}
  return response({saved:true});
 }catch(e){return response({error:e instanceof Error?e.message:"Resource could not be saved."},typeof(e as {status?:unknown})?.status==="number"?(e as {status:number}).status:400);}}
+
+

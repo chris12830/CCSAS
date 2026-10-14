@@ -1,9 +1,10 @@
+import {applicationOrigin} from '../../../lib/vps-origin';
 import {getChatGPTUser} from "../../chatgpt-auth";
 import {network,hashKey,saveNetwork} from "../../../lib/sas-db";
 import {canonicalTransfer} from "../../../lib/supplier-transfer.mjs";
 import {importSuppliers} from "../../../lib/supplier-migration.mjs";
 export async function POST(request:Request){try{
- const origin=request.headers.get("origin");if(origin&&origin!==new URL(request.url).origin)return Response.json({error:"Invalid request origin."},{status:403});
+ const origin=request.headers.get("origin");if(origin!==applicationOrigin())return Response.json({error:"Invalid request origin."},{status:403});
  const user=await getChatGPTUser();if(!user)return Response.json({error:"Sign in as the CCSAS owner."},{status:401});
  const row=await network();if(row.ownerId!==user.userId)return Response.json({error:"Only the CCSAS owner can import suppliers."},{status:403});
  const raw=await request.text();if(raw.length>4*1024*1024)return Response.json({error:"Use a supplier export smaller than 4 MB."},{status:413});
@@ -17,3 +18,5 @@ export async function POST(request:Request){try{
  }
  return Response.json({report:next.report,applied:body.apply===true,version:row.version+(body.apply===true&&!next.report.idempotent?1:0)},{headers:{"Cache-Control":"no-store"}});
 }catch(error){return Response.json({error:error instanceof Error?error.message:"Import could not be prepared."},{status:typeof (error as {status?:unknown})?.status==="number"?(error as {status:number}).status:400});}}
+
+

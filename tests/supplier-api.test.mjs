@@ -1,3 +1,4 @@
+process.env.SAS_BASE_URL='https://supplier-api.example.test';
 import test,{after} from "node:test";
 import assert from "node:assert/strict";
 import {readFileSync,readdirSync} from "node:fs";
@@ -127,4 +128,5 @@ test("real database saves retain checkout reservations and provider settings aft
   const scoped=await request(supplier,"supplier");assert.equal(scoped.data.workspace.checkouts.at(-1).createParams,undefined);assert.equal(scoped.data.workspace.checkouts.at(-1).connectionHash,undefined);
  }finally{globalThis.fetch=originalFetch;delete globalThis.__supplierApiEnv.STRIPE_SECRET_KEY;}
 });
+
 
