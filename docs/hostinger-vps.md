@@ -46,8 +46,8 @@ installing anything. Daily VPS backups were reported disabled.
 3. Create /var/lib/ccsas with owner UID/GID 1000 for the container and mode 700.
    Verify this new path first; do not recursively change existing application paths.
 4. Build with docker compose -f deploy/compose.yaml build. Use a pinned reviewed
-   commit for deployment. Package lock regeneration currently occurs at install;
-   capture and commit the resulting lock after CI before a final release build.
+   commit for deployment. Dependency installation uses the committed lockfile
+   with frozen-lockfile mode; do not regenerate it on the production server.
 5. Run docker compose -f deploy/compose.yaml run --rm app node scripts/vps-admin.mjs migrate.
 6. Create the owner with an interactive shell password prompt, supplying the password
    through stdin to node scripts/vps-admin.mjs owner EMAIL NAME. Do not put it in
