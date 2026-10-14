@@ -1,4 +1,8 @@
-# SAS · Supplier Advertising System
+# CC SAS — Hostinger VPS development
+
+This branch converts the completed supplier integration for independent VPS hosting. See [deployment and release status](docs/hostinger-vps.md). It is not yet deployed or certified production-ready. Main remains unchanged.
+
+# Original Sites baseline (historical reference)
 
 A private, working advertising application for the Plan-It child care application network. Built with React/Vinext and a Cloudflare Worker, with durable D1 storage.
 

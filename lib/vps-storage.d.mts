@@ -1,0 +1,1 @@
+export class VPSStorage {constructor(directory:string);path(key:string):string;put(key:string,data:ArrayBuffer|Uint8Array,options?:unknown):Promise<void>;head(key:string):Promise<{size:number}|null>;get(key:string,options?:{range:{offset:number;length:number}}):Promise<{size:number;body:Uint8Array<ArrayBuffer>}|null>;delete(key:string):Promise<void>;}
