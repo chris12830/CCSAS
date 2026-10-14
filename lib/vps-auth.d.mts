@@ -1,0 +1,16 @@
+import type {VPSDatabase} from './vps-database.mjs';
+export type VPSUser={userId:string;email:string;displayName:string;fullName:string|null;role:string};
+export const sessionCookie:string;
+export function hashToken(value:string):string;
+export function normalizeEmail(value:unknown):string;
+export function passwordHash(password:unknown):Promise<string>;
+export function passwordMatches(password:unknown,stored:string):Promise<boolean>;
+export function sessionUser(db:VPSDatabase,token:string|undefined,now?:number):VPSUser|null;
+export function createSession(db:VPSDatabase,userId:string,now?:number):string;
+export function revokeSession(db:VPSDatabase,token:string|undefined):void;
+export function rateLimit(db:VPSDatabase,key:string,limit?:number,now?:number):boolean;
+export function authenticate(db:VPSDatabase,email:unknown,password:unknown):Promise<VPSUser>;
+export function inviteSupplier(db:VPSDatabase,email:string,now?:number):string;
+export function acceptInvite(db:VPSDatabase,input:{token:string;name:string;password:string},now?:number):Promise<VPSUser>;
+export function safeReturnPath(value:unknown):string;
+export function validOrigin(request:Request,configured:string|undefined):boolean;

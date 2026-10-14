@@ -1,4 +1,4 @@
-import {env} from "cloudflare:workers";
+import {env} from "../../../../../lib/vps-runtime";
 import {getChatGPTUser} from "../../../../chatgpt-auth";
 import {network} from "../../../../../lib/sas-db";
 import {ownsSupplier} from "../../../../../lib/supplier-workflows.mjs";

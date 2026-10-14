@@ -1,0 +1,26 @@
+# Add a separate virtual host; never replace another site's configuration.
+# Enable only after staging, DNS and certificate verification.
+server {
+    listen 80;
+    server_name childcaresas.com www.childcaresas.com;
+    return 301 https://childcaresas.com$request_uri;
+}
+server {
+    listen 443 ssl;
+    server_name childcaresas.com www.childcaresas.com;
+    ssl_certificate /etc/letsencrypt/live/childcaresas.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/childcaresas.com/privkey.pem;
+    client_max_body_size 26m;
+    add_header X-Content-Type-Options nosniff always;
+    add_header Referrer-Policy same-origin always;
+    location / {
+        proxy_pass http://127.0.0.1:3100;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header Oai-Authenticated-User-Id "";
+        proxy_set_header Oai-Authenticated-User-Email "";
+        proxy_read_timeout 60s;
+    }
+}

@@ -1,4 +1,4 @@
-import {env} from "cloudflare:workers";
+import {env} from "./vps-runtime";
 import {initialNetwork, type Network} from "./sas-model";
 import {emptyWorkspace,workspaceCollections,type Workspace} from "./supplier-workflows.mjs";
 import {supplierWritePlan} from "./supplier-persistence.mjs";
@@ -6,7 +6,7 @@ export function database(){if(!env.DB)throw new Error("Advertising storage is te
 export class ConcurrentChange extends Error {status=409;}
 export async function network(userId?:string,workspaceScope:"all"|"imports"|"none"="all"){
   const db=database();
-  if(userId)await db.prepare("INSERT OR IGNORE INTO sas_networks (id,owner_id,data,version,updated_at) VALUES (?,?,?,?,?)").bind("main",userId,JSON.stringify(initialNetwork()),0,new Date().toISOString()).run();
+  if(userId){const user=await db.prepare("SELECT id FROM vps_users WHERE id=? AND role='owner' AND disabled=0").bind(userId).first();if(user)await db.prepare("INSERT OR IGNORE INTO sas_networks (id,owner_id,data,version,updated_at) VALUES (?,?,?,?,?)").bind("main",userId,JSON.stringify(initialNetwork()),0,new Date().toISOString()).run();}
   // D1 batch executes in a transaction: state and workspace share one version.
   const results=await db.batch([
     db.prepare("SELECT owner_id,data,version FROM sas_networks WHERE id=?").bind("main"),
@@ -35,3 +35,4 @@ export async function supplierSummaries(ids:string[]){
   if(!ids.length)return [];
   return (await database().prepare(`SELECT campaign_id AS campaignId,app_id AS appId,SUM(CASE WHEN kind='impression' THEN 1 ELSE 0 END) AS impressions,SUM(CASE WHEN kind='click' THEN 1 ELSE 0 END) AS clicks FROM sas_events WHERE campaign_id IN (${ids.map(()=>"?").join(",")}) GROUP BY campaign_id,app_id`).bind(...ids).all()).results;
 }
+

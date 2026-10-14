@@ -11,7 +11,7 @@ const binding={
 };
 globalThis.__supplierApiEnv={DB:binding};
 const hooks=registerHooks({resolve(specifier,context,next){
- if(specifier==="cloudflare:workers")return {url:"data:text/javascript,export const env=globalThis.__supplierApiEnv",shortCircuit:true};
+ if(specifier==="cloudflare:workers"||specifier.endsWith("vps-runtime"))return {url:"data:text/javascript,export const env=globalThis.__supplierApiEnv",shortCircuit:true};
  if(specifier.endsWith("chatgpt-auth"))return {url:"data:text/javascript,export async function getChatGPTUser(){return globalThis.__supplierApiUser;}",shortCircuit:true};
  try{return next(specifier,context);}catch(e){if(specifier.startsWith(".")&&!/\.[a-z]+$/i.test(specifier))return next(specifier+".ts",context);throw e;}
 }});
@@ -24,6 +24,7 @@ async function request(actor,endpoint,method="GET",body,origin="https://supplier
  const response=await route[method](new Request("https://supplier-api.example.test/api/"+endpoint,{method,headers:{Origin:origin,"Content-Type":"application/json"},...(body?{body:JSON.stringify(body)}:{})}));
  return {status:response.status,data:await response.json()};
 }
+db.prepare("INSERT INTO vps_users(id,email,name,password_hash,role) VALUES(?,?,?,?,?)").run("owner","owner@example.test","Owner","test-only","owner");
 const loaded=await request(owner,"state"),initial=loaded.data.state;
 const application=await request(supplier,"supplier","POST",{action:"save_supplier",input:{name:"Test Company",contact:"Sam Supplier",email:"forged@example.test",website:"https://example.test",category:"Software & services",countries:["CA"],packageId:"single",currency:"CAD",accepted:true,policyVersion:initial.settings.policyVersion,policyText:initial.settings.policy},version:loaded.data.version});
 assert.equal(application.status,200);
@@ -126,3 +127,4 @@ test("real database saves retain checkout reservations and provider settings aft
   const scoped=await request(supplier,"supplier");assert.equal(scoped.data.workspace.checkouts.at(-1).createParams,undefined);assert.equal(scoped.data.workspace.checkouts.at(-1).connectionHash,undefined);
  }finally{globalThis.fetch=originalFetch;delete globalThis.__supplierApiEnv.STRIPE_SECRET_KEY;}
 });
+
