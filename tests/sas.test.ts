@@ -76,3 +76,59 @@ test("matching email cannot bypass a bound supplier identity through legacy acti
  assert.throws(()=>applyAction(state,"save_supplier",{...existing,accepted:true,policyVersion:state.settings.policyVersion,policyText:state.settings.policy},actor),/another supplier/);
  assert.throws(()=>applyAction(state,"save_campaign",{...state.campaigns[0],submit:true},actor),/another supplier/);
 });
+
+function complimentaryCandidate(){
+ const s=realNetwork(),supplier=s.suppliers[0];
+ supplier.billingStatus="unpaid";supplier.paidUntil="";
+ return {s,id:supplier.id};
+}
+test("complimentary grant activates eligible ads without creating a payment",()=>{
+ const {s,id}=complimentaryCandidate(),payments=structuredClone(s.payments);
+ const next=applyAction(s,"grant_complimentary",{id,reason:"Owner-funded launch verification",until:"2098-12-31"},owner);
+ assert.deepEqual(next.payments,payments);
+ assert.equal(next.suppliers[0].accessKind,"complimentary");
+ assert.equal(next.suppliers[0].complimentaryHistory?.[0].by,owner.userId);
+ assert.ok(eligibleAds(next,{appId:"owners"}).some(c=>c.supplierId===id));
+ assert.equal(s.suppliers[0].billingStatus,"unpaid");
+});
+test("complimentary grant requires owner, acceptance, approval, and valid expiry",()=>{
+ const {s,id}=complimentaryCandidate(),input={id,reason:"Owner launch grant",until:"2098-12-31"};
+ assert.throws(()=>applyAction(s,"grant_complimentary",input,supplierActor));
+ for(const field of ["policyAcceptedAt","policyVersion","policyText"] as const){
+  const copy=structuredClone(s);copy.suppliers[0][field]="";
+  assert.throws(()=>applyAction(copy,"grant_complimentary",input,owner));
+ }
+ const copy=structuredClone(s);copy.suppliers[0].status="pending";
+ assert.throws(()=>applyAction(copy,"grant_complimentary",input,owner));
+ assert.throws(()=>applyAction(s,"grant_complimentary",{...input,until:"2020-01-01"},owner));
+ assert.throws(()=>applyAction(s,"grant_complimentary",{...input,reason:""},owner));
+});
+test("complimentary grant preserves paid subscriptions and imported contract workflows",()=>{
+ const {s,id}=complimentaryCandidate(),input={id,reason:"Owner launch grant",until:"2098-12-31"};
+ const paid=structuredClone(s);paid.suppliers[0].billingStatus="active";paid.suppliers[0].paidUntil="2098-12-31";
+ assert.throws(()=>applyAction(paid,"grant_complimentary",input,owner));
+ const imported=structuredClone(s);imported.suppliers[0].sourceProject="ccon";
+ assert.throws(()=>applyAction(imported,"grant_complimentary",input,owner));
+});
+test("complimentary access expires and revocation retains grant history",()=>{
+ const {s,id}=complimentaryCandidate();
+ let next=applyAction(s,"grant_complimentary",{id,reason:"Owner launch grant",until:"2098-12-31"},owner);
+ next.campaigns[0].end="2099-12-31";
+ assert.ok(!eligibleAds(next,{appId:"owners",date:"2099-01-01"}).some(c=>c.supplierId===id));
+ next=applyAction(next,"revoke_complimentary",{id},owner);
+ assert.equal(next.suppliers[0].billingStatus,"unpaid");
+ assert.ok(next.suppliers[0].complimentaryHistory?.[0].revokedAt);
+ assert.equal(next.payments.length,0);
+});
+test("representative policy acceptance records current wording and signer without approving supplier",()=>{
+ const {s,id}=complimentaryCandidate();s.suppliers[0].policyAcceptedAt="";s.suppliers[0].status="pending";
+ const input={id,representative:"Chris McKinnon",accepted:true,policyVersion:s.settings.policyVersion,policyText:s.settings.policy};
+ const next=applyAction(s,"accept_representative_policy",input,owner);
+ assert.equal(next.suppliers[0].status,"pending");
+ assert.equal(next.suppliers[0].policyAcceptanceHistory?.[0].text,s.settings.policy);
+ assert.equal(next.suppliers[0].policyAcceptanceHistory?.[0].actorId,owner.userId);
+ assert.throws(()=>applyAction(s,"accept_representative_policy",{...input,accepted:false},owner));
+ assert.throws(()=>applyAction(s,"accept_representative_policy",{...input,policyVersion:"stale"},owner));
+ const other=structuredClone(s);other.suppliers[0].userId="someone-else";
+ assert.throws(()=>applyAction(other,"accept_representative_policy",input,owner));
+});
