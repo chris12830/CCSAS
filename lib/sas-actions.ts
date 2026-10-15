@@ -16,10 +16,12 @@ export function applyAction(previous:Network, action:string, input:unknown, acto
   let message="";
   switch(action){
     case "save_app":{
-      const v=z.object({id:id.optional(),name,short:z.string().min(1).max(3),domain:z.string().trim().min(2).max(150),color:z.string().regex(/^#[0-9a-fA-F]{6}$/),enabled:z.boolean(),countries,packages:z.array(id).min(1),audiences:z.array(z.enum(["owner","admin","staff"])).min(1),placements:z.array(z.string()).min(1)}).parse(input);
+      const v=z.object({id:id.optional(),name,short:z.string().min(1).max(3),domain:z.string().trim().min(2).max(150),color:z.string().regex(/^#[0-9a-fA-F]{6}$/),enabled:z.boolean(),countries,hubIds:z.array(z.string().trim().min(1).max(100).regex(/^[a-z0-9][a-z0-9_-]*$/)).max(200).optional(),packages:z.array(id).min(1),audiences:z.array(z.enum(["owner","admin","staff"])).min(1),placements:z.array(z.string()).min(1)}).parse(input);
       if(v.packages.some(p=>!state.packages.some(x=>x.id===p))||v.placements.some(p=>!placements.includes(p)))throw new Error("Choose existing packages and placements.");
       const existing=state.apps.find(a=>a.id===v.id);
       if(v.id&&!existing)throw new Error("Application not found.");
+      if(v.hubIds&&new Set(v.hubIds).size!==v.hubIds.length)throw new Error("Hub IDs must be unique.");
+      if(existing&&v.hubIds&&state.campaigns.some(c=>c.appIds.includes(existing.id)&&c.hubId&&!v.hubIds!.includes(c.hubId)))throw new Error("Keep hub IDs referenced by existing campaigns. Reassign those campaigns before removing a hub ID.");
       const next={...existing,...v,id:v.id??crypto.randomUUID()};
       if(existing)state.apps=state.apps.map(a=>a.id===next.id?next:a);else state.apps.push(next);
       message=`${v.name} advertising settings saved.`;break;
@@ -97,6 +99,7 @@ export function applyAction(previous:Network, action:string, input:unknown, acto
       if(appIds.length>p.maxApps)throw new Error(`This package allows up to ${p.maxApps} applications.`);
       if(appIds.some(id=>!state.apps.some(a=>a.id===id&&a.enabled&&a.packages.includes(p.id)&&a.countries.includes(v.country)&&a.placements.includes(v.placement))))throw new Error("One or more applications do not allow this advertising placement or package.");
       if(v.hubId&&(appIds.length!==1||!state.apps.find(a=>a.id===appIds[0])?.hubIds?.includes(v.hubId)))throw new Error("Select a hub belonging to the selected application.");
+      if(v.placement==="Dashboard ticker"&&v.hubId)throw new Error("Dashboard campaigns must not target a resource hub.");
       if(v.placement!=="Dashboard ticker"&&!v.hubId)throw new Error("Select the target resource hub.");
       const next:Campaign={...existing,id:v.id??crypto.randomUUID(),supplierId:s.id,name:v.name,text:v.text,url:v.url,country:v.country,currency:v.currency,appIds,placement:v.placement,region:v.region,hubId:v.hubId??"",tickerSpeed:v.tickerSpeed??"normal",start:v.start,end:v.end,status:v.submit?"review":"draft",sample:s.sample,createdAt:existing?.createdAt??now};
       const quote=campaignPurchaseQuote(state,next);
