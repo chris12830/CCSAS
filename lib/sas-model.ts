@@ -12,6 +12,9 @@ export type Supplier = {
   accountStatus?:"active"|"hold"|"cancelled"|"deleted"; accountReason?:string; accountUpdatedAt?:string;
   sourceProject?:string; sourceSupplierId?:string; sourceAccountId?:string; paidThroughAt?:string;
   packageId:string; billingStatus:"unpaid"|"active"|"past_due"; paidUntil:string;
+  accessKind?:"complimentary"; complimentaryReason?:string; complimentaryGrantedAt?:string; complimentaryGrantedBy?:string;
+  complimentaryHistory?:{reason:string;until:string;at:string;by:string;revokedAt?:string}[];
+  policyAcceptanceHistory?:{at:string;version:string;text:string;representative:string;actorId:string;actorEmail:string}[];
   currency:"CAD"|"USD"; sample:boolean; userId?:string;
   policyAcceptedAt:string; policyVersion:string; policyText:string; createdAt:string;
 };
