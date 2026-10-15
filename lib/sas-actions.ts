@@ -45,6 +45,37 @@ export function applyAction(previous:Network, action:string, input:unknown, acto
       if(existing)state.suppliers=state.suppliers.map(s=>s.id===next.id?next:s);else state.suppliers.push(next);
       message=`${next.name} supplier application ${existing?"updated":"received"}.`;break;
     }
+    case "accept_representative_policy":{
+      const v=z.object({id,representative:name,accepted:z.literal(true),policyVersion:z.string(),policyText:z.string()}).parse(input),s=state.suppliers.find(s=>s.id===v.id);
+      if(!s)throw new Error("Supplier not found.");
+      if(s.userId&&s.userId!==actor.userId)throw new Error("This supplier must accept policy through its own account.");
+      if(v.policyVersion!==state.settings.policyVersion||v.policyText!==state.settings.policy)throw new Error("Policy changed. Refresh and review it again.");
+      s.policyAcceptanceHistory??=[];
+      s.policyAcceptanceHistory.push({at:now,version:v.policyVersion,text:v.policyText,representative:v.representative,actorId:actor.userId,actorEmail:actor.email});
+      s.policyAcceptedAt=now;s.policyVersion=v.policyVersion;s.policyText=v.policyText;
+      message=`Policy accepted by ${v.representative} as authorized representative of ${s.name}.`;break;
+    }
+    case "grant_complimentary":{
+      const v=z.object({id,reason:z.string().trim().min(5).max(500),until:date}).parse(input),s=state.suppliers.find(s=>s.id===v.id);
+      if(!s)throw new Error("Supplier not found.");
+      const p=state.packages.find(p=>p.id===s.packageId);
+      if(!p?.enabled||p.sourceAppId||s.sourceProject)throw new Error("Complimentary access is available only for direct SAS packages; preserved contracts require their existing workflow.");
+      if(s.status!=="approved"||(s.accountStatus??"active")!=="active"||!s.policyAcceptedAt||!s.policyVersion||!s.policyText)throw new Error("Approve the supplier and record genuine policy acceptance first.");
+      if(v.until<today())throw new Error("Choose today or a future expiry date.");
+      if(s.billingStatus==="active"&&s.paidUntil>=today()&&s.accessKind!=="complimentary")throw new Error("Do not replace an active paid subscription with complimentary access.");
+      s.complimentaryHistory??=[];
+      s.complimentaryHistory.push({reason:v.reason,until:v.until,at:now,by:actor.userId});
+      s.accessKind="complimentary";s.complimentaryReason=v.reason;s.complimentaryGrantedAt=now;s.complimentaryGrantedBy=actor.userId;
+      s.billingStatus="active";s.paidUntil=v.until;s.paidThroughAt=undefined;
+      message=`Complimentary access granted to ${s.name} through ${v.until}: ${v.reason}. No payment received or revenue recorded.`;break;
+    }
+    case "revoke_complimentary":{
+      const v=z.object({id}).parse(input),s=state.suppliers.find(s=>s.id===v.id);
+      if(!s||s.accessKind!=="complimentary")throw new Error("No complimentary access to revoke.");
+      const grant=s.complimentaryHistory?.at(-1);if(grant)grant.revokedAt=now;
+      s.accessKind=undefined;s.billingStatus="unpaid";s.paidUntil="";
+      message=`Complimentary access revoked for ${s.name}. No payment records changed.`;break;
+    }
     case "supplier_status":{
       const v=z.object({id,status:z.enum(["approved","pending","suspended","rejected"])}).parse(input),s=state.suppliers.find(s=>s.id===v.id);
       if(!s)throw new Error("Supplier not found.");
@@ -85,7 +116,7 @@ export function applyAction(previous:Network, action:string, input:unknown, acto
       if(v.paidUntil<v.date||v.paidUntil<today())throw new Error("Choose a current or future paid-through date.");
       if(state.payments.some(p=>p.reference===v.reference))throw new Error("This payment reference is already recorded.");
       state.payments.unshift({...v,id:crypto.randomUUID(),sample:s.sample});
-      s.billingStatus="active";s.paidUntil=v.paidUntil;message=`Payment recorded for ${s.name}.`;break;
+      s.accessKind=undefined;s.billingStatus="active";s.paidUntil=v.paidUntil;message=`Payment recorded for ${s.name}.`;break;
     }
     case "billing_status":{
       const v=z.object({id,status:z.enum(["unpaid","past_due"])}).parse(input),s=state.suppliers.find(s=>s.id===v.id);
