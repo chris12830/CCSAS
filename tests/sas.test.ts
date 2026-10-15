@@ -132,3 +132,25 @@ test("representative policy acceptance records current wording and signer withou
  const other=structuredClone(s);other.suppliers[0].userId="someone-else";
  assert.throws(()=>applyAction(other,"accept_representative_policy",input,owner));
 });
+
+test("owner saves registered hub IDs without losing the application key",()=>{
+ const s=realNetwork(),app=s.apps.find(a=>a.id==="owners")!;app.integrationHash="keep-me";
+ const next=applyAction(s,"save_app",{...app,hubIds:["child-care-policies","finance-audits"]},owner);
+ assert.deepEqual(next.apps.find(a=>a.id==="owners")?.hubIds,["child-care-policies","finance-audits"]);
+ assert.equal(next.apps.find(a=>a.id==="owners")?.integrationHash,"keep-me");
+ assert.throws(()=>applyAction(s,"save_app",{...app,hubIds:["duplicate","duplicate"]},owner));
+ assert.throws(()=>applyAction(s,"save_app",{...app,hubIds:["Bad Hub Name"]},owner));
+});
+test("hub campaign is restricted to its selected app and exact registered hub",()=>{
+ const s=realNetwork(),app=s.apps.find(a=>a.id==="owners")!;app.hubIds=["child-care-policies"];
+ const supplier=s.suppliers[0];supplier.packageId="network";
+ const input={supplierId:supplier.id,name:"Hub targeting verification",text:"A valid hub advertising message",url:"https://example.com",country:"CA",currency:"CAD",appIds:["owners"],placement:"Resource hub ticker",region:"",hubId:"child-care-policies",start:today(),end:"2027-12-31",submit:true};
+ let next=applyAction(s,"save_campaign",input,owner);
+ const c=next.campaigns.at(-1)!;
+ next=applyAction(next,"campaign_status",{id:c.id,status:"published"},owner);
+ assert.ok(eligibleAds(next,{appId:"owners",placement:"Resource hub ticker",hubId:"child-care-policies"}).some(a=>a.id===c.id));
+ assert.ok(!eligibleAds(next,{appId:"owners",placement:"Resource hub ticker",hubId:"finance-audits"}).some(a=>a.id===c.id));
+ assert.throws(()=>applyAction(s,"save_campaign",{...input,hubId:"unregistered"},owner));
+ assert.throws(()=>applyAction(s,"save_campaign",{...input,placement:"Dashboard ticker"},owner));
+ assert.throws(()=>applyAction(next,"save_app",{...app,hubIds:[]},owner));
+});
