@@ -1,0 +1,55 @@
+import assert from 'node:assert/strict';
+import {mkdtemp,rm} from 'node:fs/promises';
+import {spawn} from 'node:child_process';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {fileURLToPath} from 'node:url';
+import {createServer} from 'node:net';
+import {VPSDatabase} from '../lib/vps-database.mjs';
+import {passwordHash} from '../lib/vps-auth.mjs';
+import {initialNetwork} from '../lib/sas-model.ts';
+const root=fileURLToPath(new URL('../',import.meta.url)),directory=await mkdtemp(join(tmpdir(),'ccsas-owner-return-'));
+const probe=createServer();
+await new Promise(resolve=>probe.listen(0,'127.0.0.1',resolve));
+const port=probe.address().port;
+await new Promise(resolve=>probe.close(resolve));
+const origin='https://ccsas-return.example.test',local='http://127.0.0.1:'+port,password='Local-return-test-password!';
+let child;
+try{
+ const db=new VPSDatabase(directory+'/ccsas.sqlite');
+ db.migrate(new URL('file://'+root+'/drizzle/'));
+ const state=initialNetwork();state.suppliers.push({...state.suppliers[0],id:'plan-it',name:'Plan-It fixture',userId:'supplier-user',email:'supplier@example.test',sample:false});
+ const hash=await passwordHash(password);
+ for(const [id,email,role] of [['owner','owner@example.test','owner'],['supplier-user','supplier@example.test','supplier'],['other-user','other@example.test','supplier']])db.raw.prepare('INSERT INTO vps_users(id,email,name,password_hash,role) VALUES(?,?,?,?,?)').run(id,email,id,hash,role);
+ db.raw.prepare('INSERT INTO sas_networks(id,owner_id,data,version,updated_at) VALUES(?,?,?,?,?)').run('main','owner',JSON.stringify(state),0,new Date().toISOString());
+ for(const [collection,record] of [['checkouts',{id:'checkout-02',supplierId:'plan-it',invoiceId:'invoice-02',status:'test_paid'}],['invoices',{id:'invoice-02',supplierId:'plan-it',status:'open'}]])db.raw.prepare('INSERT INTO sas_supplier_records(collection,id,supplier_id,data,updated_at) VALUES(?,?,?,?,?)').run(collection,record.id,record.supplierId,JSON.stringify(record),new Date().toISOString());
+ db.close();
+ child=spawn(process.execPath,[root+'/node_modules/next/dist/bin/next','start','--hostname','127.0.0.1','--port',String(port)],{cwd:root,env:{...process.env,NODE_ENV:'production',SAS_DATA_DIR:directory,SAS_BASE_URL:origin,STRIPE_SECRET_KEY:'',STRIPE_WEBHOOK_SECRET:'',SAS_CCON_APP_KEY:'',SAS_DOCTRAIN_APP_KEY:''},stdio:['ignore','pipe','pipe']});
+ let logs='';child.stdout.on('data',b=>{logs+=b});child.stderr.on('data',b=>{logs+=b});
+ await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('Server startup timed out: '+logs)),15000);child.on('exit',code=>{clearTimeout(timer);reject(Error('Server exited: '+code+' '+logs));});child.stdout.on('data',b=>{if(String(b).includes('Ready')){clearTimeout(timer);resolve();}});});
+ async function request(path,cookie){return fetch(local+path,{headers:cookie?{Cookie:cookie}:{},redirect:'manual'});}
+ async function login(email){const response=await fetch(local+'/api/auth',{method:'POST',headers:{Origin:origin,'Content-Type':'application/json'},body:JSON.stringify({operation:'login',email,password}),redirect:'manual'});assert.equal(response.status,200);const cookie=response.headers.get('set-cookie');assert.match(cookie,/SameSite=lax/i);assert.match(cookie,/HttpOnly/i);assert.match(cookie,/Secure/i);return cookie.split(';')[0];}
+ const owner=await login('owner@example.test'),supplier=await login('supplier@example.test'),other=await login('other@example.test');
+ const ownerReturn=await request('/api/payments/return?payment=checkout-02',owner);
+ assert.equal(ownerReturn.status,303);
+ const destination=new URL(ownerReturn.headers.get('location'));
+ assert.equal(destination.origin,origin);assert.equal(destination.pathname,'/');assert.equal(destination.searchParams.get('view'),'workspace');assert.equal(destination.searchParams.get('supplier'),'plan-it');
+ const ownerPage=await request(destination.pathname+destination.search,owner);assert.equal(ownerPage.status,200);assert.match(await ownerPage.text(),/owner@example\.test/);
+ console.log('PASS production HTTP: owner session returns to Plan-It Billing with its actual account email');
+ const legacy=await request('/supplier?payment=checkout-02',owner);
+ assert.equal(legacy.status,307);assert.equal(legacy.headers.get('location'),'/api/payments/return?payment=checkout-02');
+ console.log('PASS production HTTP: existing owner checkout URLs leave the read-only supplier preview');
+ const supplierReturn=await request('/api/payments/return?payment=checkout-02',supplier);
+ assert.equal(supplierReturn.status,303);const supplierDestination=new URL(supplierReturn.headers.get('location'));assert.equal(supplierDestination.pathname,'/supplier');assert.equal(supplierDestination.searchParams.get('payment'),'checkout-02');
+ const supplierPage=await request(supplierDestination.pathname+supplierDestination.search,supplier);assert.equal(supplierPage.status,200);assert.match(await supplierPage.text(),/supplier@example\.test/);
+ assert.equal((await request('/api/state',supplier)).status,403);
+ console.log('PASS production HTTP: supplier session stays in its own portal and remains denied owner data');
+ assert.equal((await request('/api/payments/return?payment=checkout-02',other)).status,403);
+ const signedOut=await request('/api/payments/return?payment=checkout-02');assert.equal(signedOut.status,303);assert.equal(new URL(signedOut.headers.get('location')).pathname,'/login');
+ console.log('PASS production HTTP: unrelated and signed-out accounts cannot borrow the checkout');
+ const verify=new VPSDatabase(directory+'/ccsas.sqlite');
+ assert.equal(verify.raw.prepare("SELECT version FROM sas_networks WHERE id='main'").get().version,0);
+ assert.equal(JSON.parse(verify.raw.prepare("SELECT data FROM sas_supplier_records WHERE collection='invoices'").get().data).status,'open');
+ assert.equal(JSON.parse(verify.raw.prepare("SELECT data FROM sas_supplier_records WHERE collection='checkouts'").get().data).status,'test_paid');
+ verify.close();console.log('PASS production HTTP: return navigation makes no financial changes');
+}finally{if(child){child.kill('SIGTERM');await new Promise(resolve=>{const timer=setTimeout(resolve,2000);child.once('exit',()=>{clearTimeout(timer);resolve();});});}await rm(directory,{recursive:true,force:true});}

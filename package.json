@@ -12,9 +12,10 @@
     "start": "next start --hostname 127.0.0.1 --port 3100",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate",
-    "test": "node scripts/verify-sas.mjs && node --test tests/supplier-workflows.test.mjs tests/supplier-migration.test.mjs tests/supplier-persistence.test.mjs tests/supplier-payments.test.mjs tests/supplier-enquiry-ledger.test.mjs tests/supplier-catalog.test.mjs tests/supplier-notices.test.mjs && node --experimental-transform-types --test tests/supplier-api.test.mjs && node --test tests/vps-runtime.test.mjs",
+    "test": "node scripts/verify-sas.mjs && node --test tests/supplier-workflows.test.mjs tests/supplier-migration.test.mjs tests/supplier-persistence.test.mjs tests/supplier-payments.test.mjs tests/supplier-enquiry-ledger.test.mjs tests/supplier-catalog.test.mjs tests/supplier-notices.test.mjs && node --experimental-transform-types --test tests/supplier-api.test.mjs tests/payment-return-api.test.mjs && node --test tests/vps-runtime.test.mjs",
     "db:migrate": "node scripts/vps-admin.mjs migrate",
-    "test:vps": "node --test tests/vps-runtime.test.mjs"
+    "test:vps": "node --test tests/vps-runtime.test.mjs",
+    "test:payment-return": "node --experimental-transform-types scripts/verify-payment-return.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",

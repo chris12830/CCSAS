@@ -105,3 +105,29 @@ in once to receive the updated cookie, then test the return using a new clearly
 labelled sandbox invoice. This checkpoint does not authorize a live-mode switch
 or establish production payment readiness.
 
+## Owner checkout return follow-up — 2026-10-16
+
+The next browser test no longer requested sign-in, but the owner session returned
+to the read-only Supplier portal preview and selected an example supplier. A
+separate screenshot also showed the real Plan-It Supplier portal. Payment
+returns use the current server session; they must not establish a new identity.
+
+New checkout success and cancellation URLs use an authenticated return endpoint.
+It checks the current server session and checkout ownership, then sends the owner
+to Supplier services / Billing with the invoice's actual supplier selected, or
+sends an owning supplier to their Supplier portal. Existing owner return URLs at
+`/supplier?payment=...` also pass through this endpoint. Return navigation never
+marks an invoice paid or changes membership. Payment verification still uses
+the existing processor reconciliation flow.
+
+The header now displays the actual signed-in email. Real suppliers no longer see
+the Super Admin navigation link. Completed payments have a View confirmation
+link so the return can be checked without another charge.
+
+Validation passed: 122 automated domain, API, authentication and runtime checks;
+TypeScript; production build; and five compiled-server HTTP scenarios using real
+isolated SQLite sessions. The HTTP scenarios cover owner and supplier routing,
+legacy owner URLs, unauthorized accounts, and unchanged financial records. Run
+`pnpm test:payment-return` after a build to repeat them; the Docker image build
+also runs this check. Browser acceptance of this follow-up remains pending.
+
