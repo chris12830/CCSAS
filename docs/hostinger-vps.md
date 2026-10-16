@@ -78,3 +78,30 @@ X-SAS-App-Key. Existing CCON protected historical URLs remain in the migration
 logic; they require a separate reviewed migration and must not be redirected to
 unprotected files. Stripe and email stay disabled until real credentials, verified
 webhooks/sender configuration and staging acceptance are complete.
+
+## Sandbox checkout checkpoint — 2026-10-16
+
+The owner tested a CAD 1.00 sandbox invoice in the deployed application. The
+supplier portal recorded `test_paid`, while the invoice remained open and no
+live membership or revenue was recorded. Stripe showed the automatic
+`checkout.session.completed` webhook delivered with HTTP 200. The owner also
+confirmed that resending the event did not duplicate the payment.
+
+The checkout return fix changes the Secure, HttpOnly, host-only session cookie
+from SameSite Strict to Lax so a top-level GET back from Stripe retains the
+session. Existing exact-origin POST checks and server-side ownership checks
+remain in place. The return screen displays the verified outcome, distinguishes
+test receipts from real payments, and refreshes applied invoice data without
+reloading the same return URL repeatedly. Confirmed sandbox receipts cannot be
+paid or expired again through the invoice buttons in test mode.
+
+Validation: `pnpm test` (109 checks), the authentication API suite (5 checks),
+TypeScript, and the production build passed locally. The modified payment
+workspace has no ESLint findings; unrelated existing lint findings remain in
+the main client and payment test fixture. Automated browser verification could
+not run because the Chromium download was invalid. This fix still needs
+deployment and a real browser return check. After deployment, sign out and back
+in once to receive the updated cookie, then test the return using a new clearly
+labelled sandbox invoice. This checkpoint does not authorize a live-mode switch
+or establish production payment readiness.
+
