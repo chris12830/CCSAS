@@ -129,5 +129,22 @@ TypeScript; production build; and five compiled-server HTTP scenarios using real
 isolated SQLite sessions. The HTTP scenarios cover owner and supplier routing,
 legacy owner URLs, unauthorized accounts, and unchanged financial records. Run
 `pnpm test:payment-return` after a build to repeat them; the Docker image build
-also runs this check. Browser acceptance of this follow-up remains pending.
+also runs this check. The deployed confirmation check is recorded below.
+
+## Deployed supplier confirmation check — 2026-10-16
+
+The owner built and deployed commit
+`40edb7a7040a132203bc8f8d57253d7d9306e392`. Using View confirmation for an
+existing sandbox receipt displayed Test payment confirmed. Both CAD 1.00 invoices,
+`CCSAS-SANDBOX-20261016-01` and `CCSAS-SANDBOX-20261016-02`, showed confirmed
+test receipts and remained open. The notice explicitly stated that no real money
+was collected and membership was unchanged.
+
+A following screenshot from the same browser window showed Supplier portal,
+Plan-It Inc., and Signed in: christmckinnon@gmail.com, without the owner preview
+banner or Super Admin navigation. This verifies that viewing the existing payment
+confirmation retained the correct supplier account. A fresh Stripe Checkout
+completion or cancellation return and the owner return path have not yet been
+verified in the deployed browser; their HTTP routing tests passed locally.
+Stripe remains in test mode. This check does not establish live payment readiness.
 
