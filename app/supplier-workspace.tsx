@@ -23,6 +23,7 @@ function History({rows,columns}:{rows:WorkspaceRecord[];columns:{key:string;labe
 
 function OnlinePayments({supplierId,invoices,owner,readOnly,reload}:{supplierId:string;invoices:WorkspaceRecord[];owner:boolean;readOnly:boolean;reload:()=>Promise<void>}){
  const [returnedId]=useState(()=>typeof window==="undefined"?null:new URLSearchParams(window.location.search).get("payment"));
+ const [cancelled]=useState(()=>typeof window!=="undefined"&&new URLSearchParams(window.location.search).get("cancelled")==="1");
  const [processing,setProcessing]=useState<{enabled:boolean;configured:boolean;mode:string|null}|null>(null),[payments,setPayments]=useState<WorkspaceRecord[]>([]),[busy,setBusy]=useState(!!returnedId),[error,setError]=useState(""),[loaded,setLoaded]=useState(false);
  const section=useRef<HTMLElement>(null);
  const load=useCallback(async()=>{
@@ -63,6 +64,7 @@ function OnlinePayments({supplierId,invoices,owner,readOnly,reload}:{supplierId:
   status==="expired"?["Checkout expired","This checkout expired without a confirmed payment. You can start a new checkout for this invoice."]:
   busy||!loaded?["Checking your payment…","We are confirming the payment status with Stripe."]:
   error?["Payment could not be confirmed","Do not pay again. Retry the status check or contact the network owner."]:
+  status==="open"&&cancelled?["Checkout cancelled","No payment was confirmed. Your invoice is still unpaid. You can resume checkout when you’re ready."]:
   ["Payment confirmation pending","A successful payment has not yet been confirmed. Use Check payment status before paying again."];
  return <section ref={section}>
   <h3>Online invoice payments</h3>

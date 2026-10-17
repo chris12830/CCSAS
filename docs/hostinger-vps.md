@@ -174,10 +174,7 @@ supplier account check. A separate header screenshot was not collected between
 cancellation and resuming the payment.
 
 Remaining payment checks and follow-up:
-- Exercise declined and expired checkout browser cases.
-- Clarify the cancellation banner and the subscription card's legacy Checkout
-  has not been configured wording, which is still visible despite enabled
-  sandbox invoice checkout.
+- Browser-check the display wording follow-up after deployment.
 - Live Stripe configuration and live payment acceptance remain separate work.
   Stripe is still in test mode; these checks do not establish live readiness.
 
@@ -193,5 +190,48 @@ The confirmation notice itself was outside the supplied screenshot crop.
 
 Together with the supplier screenshots above, this completes the deployed owner
 and supplier account routing checks. No additional payment was requested for the
-owner navigation check. Declined and expired checkout browser cases and the
-recorded wording issues remain outstanding. Stripe remains in test mode.
+owner navigation check. The subsequent declined and expired checkout checks are
+recorded below. Stripe remains in test mode.
+
+## Declined and expired sandbox checkout — 2026-10-17
+
+The user created separate advertising invoice `CCSAS-SANDBOX-20261017-04` for
+CAD 1.00, due 2026-10-17, with no package paid-through date. In Stripe Sandbox
+Checkout, the generic-decline test card `4000 0000 0000 0002` produced the expected
+card-declined error. The owner then checked payment status in SAS: the fourth
+checkout and its invoice remained open and unpaid; only invoices 01–03 had
+`test_paid` receipts.
+
+The owner selected Expire unpaid checkout for that open attempt. The resulting
+Billing screenshot showed the fourth checkout as `expired`, invoice 04 still
+open, and the three earlier confirmed test receipts unchanged. Refreshing the
+original Stripe checkout page displayed You're all done here and a generic
+completed-or-timed-out explanation. Its meaning here is established by SAS's
+expired checkout status and the preceding declined attempt, not by that generic
+Stripe message alone. The user confirmed that refreshing produced this screen.
+
+These deployed checks cover the generic card decline, retention of an unpaid
+invoice, owner-triggered expiration, and closure of the original Stripe checkout.
+The supplier portal's separate expired-return banner was not captured in this
+browser test. No successful payment was made for invoice 04.
+
+## Payment display wording follow-up — 2026-10-17
+
+Cancellation now has a distinct Checkout cancelled message only when the return
+contains `cancelled=1` and the checked checkout is still open. Loading and errors
+are handled first; confirmed payments, review and expiration retain their
+verified outcomes. The URL flag does not change a financial record or override a
+confirmed payment.
+
+The supplier card labels complimentary access as Advertising access and
+Complimentary access through its existing expiry date. Paid access retains Paid
+through. When a package has no legacy payment link, the card directs the supplier
+to Billing to view invoices and payment options instead of saying checkout has
+not been configured.
+
+Validation passed: 122 existing automated checks; TypeScript; production build;
+and five compiled-server HTTP payment-return scenarios. The changed supplier
+workspace has no ESLint findings. The main client retains its nine existing
+findings with none added. This display update still requires VPS deployment and
+a browser check of its wording. Stripe remains in test mode; live configuration
+and acceptance are separate work.
