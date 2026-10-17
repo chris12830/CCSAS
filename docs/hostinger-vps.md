@@ -174,11 +174,24 @@ supplier account check. A separate header screenshot was not collected between
 cancellation and resuming the payment.
 
 Remaining payment checks and follow-up:
-- Verify the owner confirmation return in the deployed browser; compiled-server
-  HTTP tests already cover that route and selection of the actual supplier.
 - Exercise declined and expired checkout browser cases.
 - Clarify the cancellation banner and the subscription card's legacy Checkout
   has not been configured wording, which is still visible despite enabled
   sandbox invoice checkout.
 - Live Stripe configuration and live payment acceptance remain separate work.
   Stripe is still in test mode; these checks do not establish live readiness.
+
+## Deployed owner confirmation check — 2026-10-17
+
+After the instruction to open the last View confirmation link in the regular
+owner window, the user supplied a screenshot showing Network owner / Super Admin
+in the sidebar, Supplier services selected, and the three actual Plan-It sandbox
+invoices and receipts, including `CCSAS-SANDBOX-20261017-03`. Online checkout
+controls and owner invoice forms were present. This confirms that the owner
+confirmation return retained the owner workspace and selected the actual supplier.
+The confirmation notice itself was outside the supplied screenshot crop.
+
+Together with the supplier screenshots above, this completes the deployed owner
+and supplier account routing checks. No additional payment was requested for the
+owner navigation check. Declined and expired checkout browser cases and the
+recorded wording issues remain outstanding. Stripe remains in test mode.
