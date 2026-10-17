@@ -3,7 +3,7 @@
 Historical conversion baseline: integration commit
 4ee04930457740ddca02d756efd3bee0938c71ef. Current development work is on
 feature/complimentary-supplier-access. The deployed application commit is
-1c3eaf18e72cc1be42229d64a54e08d3e230ad03. No merge to main was performed.
+4e8849100727b73b89f53a065990e04bd37f4e6e. No merge to main was performed.
 
 ## Conversion
 
@@ -24,10 +24,12 @@ do not replace their existing user IDs or infer consent from an email match.
 ## Release status
 
 CC SAS is deployed at https://childcaresas.com on the owner's VPS. The latest
-application image was built and started there, and the supplier browser confirmed
-its updated labels and cancellation message. The build runs the automated tests,
-authentication checks, TypeScript, production build and compiled-server return
-checks described in the dated checkpoints below.
+shared-package application image was built and started there, and the live public
+catalog returned the shared SAS packages in CAD and USD. New-supplier browser
+acceptance remains pending. The earlier payment-return labels and cancellation
+message were already confirmed in the supplier browser. The build runs the
+automated tests, authentication checks, TypeScript, production build and
+compiled-server return checks described in the dated checkpoints below.
 
 Stripe invoice checkout is enabled in test mode. The targeted sandbox success,
 decline, cancellation, expiration and account-return checks passed. These checks
@@ -321,11 +323,11 @@ Changed files introduce no additional ESLint findings; existing repository
 findings remain. Development tests use isolated fixture databases and do not
 create live supplier accounts or send emails.
 
-This release is prepared in the development branch and is not yet deployed.
-The VPS runtime remains `1c3eaf18e72cc1be42229d64a54e08d3e230ad03` until the owner
-builds and starts the new pinned commit. No SQLite schema migration is needed.
+This release was saved as `4e8849100727b73b89f53a065990e04bd37f4e6e` and the
+owner completed the pinned deployment command. The terminal and live catalog
+checks are recorded below. No SQLite schema migration was needed.
 
-Remaining acceptance after deployment:
+Remaining browser and integration acceptance:
 
 - Confirm Packages & pricing shows Shared SAS packages and supplier criteria,
   with the three shared package cards and existing prices.
@@ -343,3 +345,26 @@ Remaining acceptance after deployment:
   registration/KYC routes; this SAS release does not switch those routes.
   Other app integrations, supplier email delivery and remaining hub coverage
   acceptance are still separate outstanding work.
+
+
+## Shared-package deployment and public catalog check — 2026-10-17
+
+The owner supplied the deployment terminal screenshot after running the pinned
+update command. It showed 18 changed files, an 18/18 successful Docker build,
+`Image ccsas-app Built`, and `Container ccsas-app-1 Started`. The final Compose
+status was Up, with only the SAS app recreated on `127.0.0.1:3100`.
+
+Read-only HTTPS requests to the live `/api/catalog?currency=CAD` and
+`/api/catalog?currency=USD` both returned HTTP 200, `packageStructure: shared-sas`
+and criteria revision 2. Both returned exactly `single`, `bundle` and `network`.
+CAD monthly amounts were 4900, 9900 and 14900 cents; USD monthly amounts were
+3900, 7900 and 11900 cents. The respective coverage limits were 1, 3 and 99.
+The enabled eligible application IDs in the catalog were `owners` and `doctrain`;
+this registry result does not establish new end-to-end integration acceptance.
+
+The shared-package runtime is deployed. The new application form, fresh supplier
+registration, information request/resubmission, rejection/reopening and approval
+still require browser acceptance. No new real supplier account or invitation was
+created by these read-only checks. No emails were sent, provider settings changed
+or financial records mutated. Live payment activation remains explicitly deferred.
+Documentation-only follow-ups after this runtime commit need no image rebuild.
