@@ -148,3 +148,37 @@ completion or cancellation return and the owner return path have not yet been
 verified in the deployed browser; their HTTP routing tests passed locally.
 Stripe remains in test mode. This check does not establish live payment readiness.
 
+## Fresh sandbox checkout browser checks — 2026-10-17
+
+The user tested deployed application commit
+`40edb7a7040a132203bc8f8d57253d7d9306e392` with the new separate advertising
+invoice `CCSAS-SANDBOX-20261017-03`: CAD 1.00, due 2026-10-17, with no package
+paid-through date.
+
+Cancellation: after opening Stripe Sandbox Checkout and returning with Stripe's
+back arrow without paying, the portal returned to Billing. The new checkout and
+invoice both showed `open`; no confirmed receipt appeared for invoice 03.
+The banner said Payment confirmation pending. This is generic unpaid-checkout
+wording, not an explicit cancellation acknowledgement, and remains a UX follow-up.
+
+Completion: the user resumed payment for the same invoice using the Stripe test
+card. The returned Billing screen showed Test payment confirmed, a third
+`test_paid` receipt, and the invoice 03 button changed to Test payment confirmed.
+All three sandbox invoices remained open. The notice stated that no real money
+was collected and membership was unchanged.
+
+A subsequent screenshot from that same window showed Supplier portal, Plan-It
+Inc., and Signed in: christmckinnon@gmail.com, with no owner preview banner or
+Super Admin link. The fresh successful payment return therefore passed the
+supplier account check. A separate header screenshot was not collected between
+cancellation and resuming the payment.
+
+Remaining payment checks and follow-up:
+- Verify the owner confirmation return in the deployed browser; compiled-server
+  HTTP tests already cover that route and selection of the actual supplier.
+- Exercise declined and expired checkout browser cases.
+- Clarify the cancellation banner and the subscription card's legacy Checkout
+  has not been configured wording, which is still visible despite enabled
+  sandbox invoice checkout.
+- Live Stripe configuration and live payment acceptance remain separate work.
+  Stripe is still in test mode; these checks do not establish live readiness.
