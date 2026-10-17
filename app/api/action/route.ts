@@ -29,7 +29,7 @@ export async function POST(request:Request){
       next.activity.unshift({id:crypto.randomUUID(),text:`Connection key created for ${app.name}.`,date:new Date().toISOString()});
     }else if(catalogActions.includes(action))({state:next,workspace}=applyCatalogAction(row.state,row.workspace,action,input,{userId:user.userId,email:user.email,owner}));
     else if(workflowActions.includes(action))({state:next,workspace}=executeSupplierWorkflow(row.state,row.workspace,action,input,{userId:user.userId,email:user.email,owner}));
-    else next=applyAction(row.state,action,input,{userId:user.userId,email:user.email,owner});
+    else next=applyAction(row.state,action,input,{userId:user.userId,email:user.email,owner},row.workspace);
     workspace=queueSupplierNotice(workspace,next,action,input);
     await saveNetwork(next,row.version,workspace,row.workspace);
     return Response.json({state:publicState(next),version:row.version+1,workspace,summary:await summaries(),key});

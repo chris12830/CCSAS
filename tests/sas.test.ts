@@ -154,3 +154,26 @@ test("hub campaign is restricted to its selected app and exact registered hub",(
  assert.throws(()=>applyAction(s,"save_campaign",{...input,placement:"Dashboard ticker"},owner));
  assert.throws(()=>applyAction(next,"save_app",{...app,hubIds:[]},owner));
 });
+
+
+test("new supplier records cannot opt out of company verification or approve through legacy controls",()=>{
+ const state=initialNetwork(),input={name:"New Shared Supplier",contact:"Sam Supplier",email:supplierActor.email,website:"https://example.test",category:"Software & services",countries:["CA"],packageId:"single",currency:"CAD",accepted:true,policyVersion:state.settings.policyVersion,policyText:state.settings.policy,applicationRequired:false};
+ const next=applyAction(state,"save_supplier",input,supplierActor),created=next.suppliers.at(-1)!;
+ assert.equal(created.applicationRequired,true);
+ assert.throws(()=>applyAction(next,"supplier_status",{id:created.id,status:"approved"},owner),/company verification/);
+});
+
+test("new suppliers cannot select legacy CCON offers by posting their identifiers",()=>{
+ const state=initialNetwork();state.packages.push({...state.packages[0],id:"old-ccon",sourceAppId:"owners",publicOffer:true});
+ const input={name:"New Shared Supplier",contact:"Sam Supplier",email:supplierActor.email,website:"https://example.test",category:"Software & services",countries:["CA"],packageId:"old-ccon",currency:"CAD",accepted:true,policyVersion:state.settings.policyVersion,policyText:state.settings.policy};
+ assert.throws(()=>applyAction(state,"save_supplier",input,supplierActor),/shared SAS package/);
+ assert.equal(state.suppliers.length,4);
+});
+
+
+test("routine network settings retain the published supplier criteria and their revision",()=>{
+ const state=initialNetwork();state.settings.supplierCriteria={title:"Published network criteria",introduction:"Owner-reviewed company requirements.",revision:7,items:[{id:"business",title:"Business",description:"Verify the company.",responseType:"confirmation",required:true}]};
+ const before=structuredClone(state.settings.supplierCriteria);
+ const next=applyAction(state,"save_settings",{...state.settings,showSamples:false},owner);
+ assert.deepEqual(next.settings.supplierCriteria,before);assert.equal(next.settings.showSamples,false);
+});

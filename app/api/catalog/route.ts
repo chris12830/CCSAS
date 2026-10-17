@@ -1,3 +1,10 @@
 import {network} from "../../../lib/sas-db";
 import {supplierCriteria} from "../../../lib/supplier-catalog.mjs";
-export async function GET(){try{const row=await network();return Response.json({criteria:supplierCriteria(row.state),policy:{body:row.state.settings.policy,revision:row.state.settings.policyVersion,status:"published"},plans:row.state.packages.filter(p=>p.publicOffer&&p.sourceAppId==="owners"&&p.enabled).map(p=>({id:p.id,name:p.name,description:p.description,currency:p.sourceCurrency,membershipFeeCents:Math.round((p.sourceCurrency==="USD"?p.usd:p.cad)*100),monthlyFeeCents:p.billingInterval==="monthly"?Math.round((p.sourceCurrency==="USD"?p.usd:p.cad)*100):0,billingInterval:p.billingInterval,benefits:p.benefits||[],exclusiveCategoryPartner:p.staticAllowed||false})),categories:[]},{headers:{"Cache-Control":"no-store"}});}catch{return Response.json({error:"The supplier catalog is temporarily unavailable."},{status:503});}}
+import {sharedPackageCatalog} from "../../../lib/supplier-packages.mjs";
+import {categories} from "../../../lib/sas-model";
+export async function GET(request:Request){try{
+ const currency=new URL(request.url).searchParams.get("currency")||"CAD";
+ if(currency!=="CAD"&&currency!=="USD")return Response.json({error:"Choose CAD or USD."},{status:400});
+ const row=await network();
+ return Response.json({packageStructure:"shared-sas",criteria:supplierCriteria(row.state),policy:{body:row.state.settings.policy,revision:row.state.settings.policyVersion,status:"published"},plans:sharedPackageCatalog(row.state,currency),categories},{headers:{"Cache-Control":"no-store"}});
+}catch{return Response.json({error:"The supplier catalog is temporarily unavailable."},{status:503});}}

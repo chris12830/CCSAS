@@ -15,6 +15,7 @@ export type Supplier = {
   accessKind?:"complimentary"; complimentaryReason?:string; complimentaryGrantedAt?:string; complimentaryGrantedBy?:string;
   complimentaryHistory?:{reason:string;until:string;at:string;by:string;revokedAt?:string}[];
   policyAcceptanceHistory?:{at:string;version:string;text:string;representative:string;actorId:string;actorEmail:string}[];
+  applicationRequired?:boolean;
   currency:"CAD"|"USD"; sample:boolean; userId?:string;
   policyAcceptedAt:string; policyVersion:string; policyText:string; createdAt:string;
 };

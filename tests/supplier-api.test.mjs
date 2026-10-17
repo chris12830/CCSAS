@@ -1,6 +1,7 @@
 process.env.SAS_BASE_URL='https://supplier-api.example.test';
 import test,{after} from "node:test";
 import assert from "node:assert/strict";
+import {supplierCriteria} from "../lib/supplier-catalog.mjs";
 import {readFileSync,readdirSync} from "node:fs";
 import {registerHooks} from "node:module";
 import {DatabaseSync} from "node:sqlite";
@@ -16,7 +17,7 @@ const hooks=registerHooks({resolve(specifier,context,next){
  if(specifier.endsWith("chatgpt-auth"))return {url:"data:text/javascript,export async function getChatGPTUser(){return globalThis.__supplierApiUser;}",shortCircuit:true};
  try{return next(specifier,context);}catch(e){if(specifier.startsWith(".")&&!/\.[a-z]+$/i.test(specifier))return next(specifier+".ts",context);throw e;}
 }});
-const stateRoute=await import("../app/api/state/route.ts"),supplierRoute=await import("../app/api/supplier/route.ts"),actionRoute=await import("../app/api/action/route.ts"),migrationRoute=await import("../app/api/migration/route.ts"),paymentsRoute=await import("../app/api/payments/route.ts"),libraryRoute=await import("../app/api/library/route.ts"),libraryFileRoute=await import("../app/api/library/[id]/file/route.ts");
+const stateRoute=await import("../app/api/state/route.ts"),supplierRoute=await import("../app/api/supplier/route.ts"),actionRoute=await import("../app/api/action/route.ts"),migrationRoute=await import("../app/api/migration/route.ts"),paymentsRoute=await import("../app/api/payments/route.ts"),libraryRoute=await import("../app/api/library/route.ts"),libraryFileRoute=await import("../app/api/library/[id]/file/route.ts"),catalogRoute=await import("../app/api/catalog/route.ts");
 after(()=>{hooks.deregister();db.close();delete globalThis.__supplierApiEnv;delete globalThis.__supplierApiUser;});
 const owner={id:"owner",email:"owner@example.test"},supplier={id:"supplier",email:"supplier@example.test"},borrower={id:"borrower",email:supplier.email};
 async function request(actor,endpoint,method="GET",body,origin="https://supplier-api.example.test"){
@@ -27,7 +28,13 @@ async function request(actor,endpoint,method="GET",body,origin="https://supplier
 }
 db.prepare("INSERT INTO vps_users(id,email,name,password_hash,role) VALUES(?,?,?,?,?)").run("owner","owner@example.test","Owner","test-only","owner");
 const loaded=await request(owner,"state"),initial=loaded.data.state;
-const application=await request(supplier,"supplier","POST",{action:"save_supplier",input:{name:"Test Company",contact:"Sam Supplier",email:"forged@example.test",website:"https://example.test",category:"Software & services",countries:["CA"],packageId:"single",currency:"CAD",accepted:true,policyVersion:initial.settings.policyVersion,policyText:initial.settings.policy},version:loaded.data.version});
+function applicationInput(state){
+ const criteria=supplierCriteria(state);
+ return {name:"Test Company",contact:"Sam Supplier",email:"forged@example.test",website:"https://example.test",category:"Software & services",countries:["CA"],packageId:"single",currency:"CAD",accepted:true,policyVersion:state.settings.policyVersion,policyText:state.settings.policy,
+  criteriaRevision:criteria.revision,criteriaAnswers:Object.fromEntries(criteria.items.map(item=>[item.id,"confirmed"])),
+  applicationDetails:{legalName:"Test Company Incorporated",companyEmail:"company@example.test",companyPhone:"555-555-1111",representativePhone:"555-555-2222",description:"Supplies and services for child care businesses.",products:"Classroom supplies",services:"",serviceRegions:"Ontario",jobTitle:"Director",addressLine1:"100 Example Street",addressLine2:"",city:"Toronto",postalCode:"M1M 1M1",registrationNumber:"TEST-123",registrationAuthority:"Test business registry",businessCountry:"CA",authorized:true,privacyAccepted:true}};
+}
+const application=await request(supplier,"supplier","POST",{action:"save_supplier",input:applicationInput(initial),version:loaded.data.version});
 assert.equal(application.status,200);
 const supplierId=application.data.state.suppliers[0].id;
 for(const row of [{collection:"messages",id:"own-message",supplierId,body:"Own supplier message",senderRole:"owner",createdAt:"now"},{collection:"messages",id:"other-message",supplierId:"sup-maple",body:"Other supplier private message",senderRole:"owner",createdAt:"now"},{collection:"sourceRecords",id:"internal-source",supplierId,record:{internal:"Private moderation note"}}])
@@ -130,3 +137,72 @@ test("real database saves retain checkout reservations and provider settings aft
 });
 
 
+
+
+test("public catalog publishes the same shared packages in CAD and USD without private records",async()=>{
+ const before=await request(owner,"state");apiActor(null);
+ for(const [currency,expected] of [["CAD",[4900,9900,14900]],["USD",[3900,7900,11900]]]){
+  const response=await catalogRoute.GET(new Request("https://supplier-api.example.test/api/catalog?app=owners&currency="+currency));
+  assert.equal(response.status,200);assert.equal(response.headers.get("Cache-Control"),"no-store");
+  const catalog=await response.json();assert.equal(catalog.packageStructure,"shared-sas");
+  assert.deepEqual(catalog.plans.map(p=>p.id),["single","bundle","network"]);
+  assert.deepEqual(catalog.plans.map(p=>p.membershipFeeCents),expected);
+  assert.ok(catalog.plans.every(p=>p.billingInterval==="monthly"&&p.currency===currency&&p.applications.some(a=>a.id==="owners")));
+  assert.equal(JSON.stringify(catalog).includes("supplier@example.test"),false);
+ }
+ assert.equal((await catalogRoute.GET(new Request("https://supplier-api.example.test/api/catalog?currency=EUR"))).status,400);
+ assert.equal((await request(owner,"state")).data.version,before.data.version);
+});
+
+test("shared signup rejects missing, stale or forged consent atomically",async()=>{
+ const applicant={id:"new-applicant",email:"new-applicant@example.test"},current=await request(owner,"state"),input=applicationInput(current.data.state);
+ const missing={...input};delete missing.applicationDetails;
+ for(const bad of [missing,{...input,criteriaRevision:0},{...input,criteriaAnswers:{}},{...input,applicationDetails:{...input.applicationDetails,authorized:false}},{...input,applicationDetails:{...input.applicationDetails,privacyAccepted:false}}]){
+  const result=await mutate(applicant,"save_supplier",bad);assert.ok([400,409].includes(result.status));
+ }
+ const after=await request(owner,"state");assert.equal(after.data.version,current.data.version);
+ assert.equal(after.data.state.suppliers.some(s=>s.userId===applicant.id),false);
+ assert.deepEqual(after.data.workspace.acceptances,current.data.workspace.acceptances);
+});
+
+test("shared applications support information requests and resubmission while preserving rejection and payment state",async()=>{
+ const applicant={id:"review-applicant",email:"review-applicant@example.test"},current=await request(owner,"state"),input=applicationInput(current.data.state);
+ const created=await mutate(applicant,"save_supplier",{...input,applicationRequired:false,status:"approved",billingStatus:"active"});assert.equal(created.status,200);
+ const company=created.data.state.suppliers[0],id=company.id;
+ assert.equal(company.status,"pending");assert.equal(company.applicationRequired,true);assert.equal(company.billingStatus,"unpaid");
+ const originalSubmission=created.data.workspace.acceptances.find(a=>a.source==="supplier-application");
+ assert.equal(originalSubmission.userId,applicant.id);assert.equal(JSON.parse(originalSubmission.text).application.details.city,"Toronto");
+ const requested=await mutate(owner,"supplier.review",{supplierId:id,decision:"more_info_requested",reason:"Clarify the company's service region.",dueAt:"2080-01-01"});assert.equal(requested.status,200);
+ const beforeInvalid=(await request(owner,"state")).data.version;
+ const invalid=await mutate(applicant,"save_supplier",{...input,id,applicationDetails:{...input.applicationDetails,authorized:false}});assert.equal(invalid.status,400);
+ assert.equal((await request(owner,"state")).data.version,beforeInvalid);
+ const corrected=await mutate(applicant,"save_supplier",{...input,id,applicationDetails:{...input.applicationDetails,city:"Ottawa",serviceRegions:"Ontario and Quebec"}});assert.equal(corrected.status,200);
+ assert.equal(corrected.data.state.suppliers[0].status,"pending");
+ assert.equal(corrected.data.workspace.reviews.at(-1).decision,"more_info_requested");
+ assert.equal(corrected.data.workspace.profiles[0].city,"Ottawa");
+ assert.deepEqual(corrected.data.workspace.acceptances.find(a=>a.id===originalSubmission.id),originalSubmission);
+ assert.equal(corrected.data.workspace.acceptances.filter(a=>a.source==="supplier-application").length,2);
+ assert.equal((await mutate(applicant,"supplier.review",{supplierId:id,decision:"approved",reason:""})).status,403);
+ const rejected=await mutate(owner,"supplier.review",{supplierId:id,decision:"rejected",reason:"Application does not meet the published criteria."});assert.equal(rejected.status,200);
+ const edited=await mutate(applicant,"save_supplier",{...input,id});assert.equal(edited.status,200);assert.equal(edited.data.state.suppliers[0].status,"rejected");
+ assert.equal((await mutate(owner,"supplier.review",{supplierId:id,decision:"pending",reason:"Reopen for owner review."})).status,200);
+ const approved=await mutate(owner,"supplier.review",{supplierId:id,decision:"approved",reason:"Company information verified."});assert.equal(approved.status,200);
+ const saved=approved.data.state.suppliers.find(s=>s.id===id);assert.equal(saved.status,"approved");assert.equal(saved.billingStatus,"unpaid");assert.equal(saved.paidUntil,"");
+ assert.equal(approved.data.workspace.invoices.filter(i=>i.supplierId===id).length,0);
+ assert.equal(approved.data.workspace.checkouts.filter(i=>i.supplierId===id).length,0);
+ assert.equal(approved.data.state.payments.filter(p=>p.supplierId===id).length,0);
+ assert.ok(approved.data.workspace.notices.filter(n=>n.supplierId===id).every(n=>n.status==="queued"));
+});
+
+test("owner-created shared records cannot bypass verification through either approval action",async()=>{
+ const applicant={id:"invited-applicant",email:"invited-applicant@example.test"},current=(await request(owner,"state")).data.state;
+ const created=await mutate(owner,"save_supplier",{...applicationInput(current),email:applicant.email});assert.equal(created.status,200);
+ const id=created.data.state.suppliers.at(-1).id;
+ // Genuine policy acceptance alone does not substitute for company verification.
+ assert.equal((await mutate(applicant,"supplier.accept_policy",{supplierId:id,accepted:true,version:current.settings.policyVersion,text:current.settings.policy})).status,200);
+ const profile=await mutate(applicant,"supplier.profile",{supplierId:id,legalName:"Test Company",authorizedAt:"2026-01-01",privacyAcceptedAt:"2026-01-01",criteriaSnapshot:{}});assert.equal(profile.status,200);
+ assert.equal(profile.data.workspace.profiles[0].authorizedAt,undefined);
+ assert.equal((await mutate(owner,"supplier_status",{id,status:"approved"})).status,409);
+ assert.equal((await mutate(owner,"supplier.review",{supplierId:id,decision:"approved",reason:""})).status,409);
+ assert.equal((await request(applicant,"supplier")).data.state.suppliers[0].status,"pending");
+});

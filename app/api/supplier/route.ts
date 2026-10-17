@@ -5,10 +5,11 @@ import {publicState,type Network} from "../../../lib/sas-model";
 import {applyAction} from "../../../lib/sas-actions";
 import {ownsSupplier,scopeWorkspace,executeSupplierWorkflow,workflowActions,type Workspace} from "../../../lib/supplier-workflows.mjs";
 import {validateSupplierApplication} from "../../../lib/supplier-catalog.mjs";
+import {isSharedPackage} from "../../../lib/supplier-packages.mjs";
 import {z} from "zod";
 function scope(state:Network,userId:string,email:string){
   const suppliers=state.suppliers.filter(s=>ownsSupplier(s,{userId,email,owner:false}));
-  const packages=state.packages.filter(p=>!p.supplierId||suppliers.some(s=>s.id===p.supplierId));
+  const packages=state.packages.filter(p=>isSharedPackage(p)||suppliers.some(s=>s.packageId===p.id));
   return publicState({...state,packages,apps:state.apps.map(a=>({...a,packages:a.packages.filter(id=>packages.some(p=>p.id===id))})),suppliers,campaigns:state.campaigns.filter(c=>suppliers.some(s=>s.id===c.supplierId)),payments:state.payments.filter(p=>suppliers.some(s=>s.id===p.supplierId)),activity:[]});
 }
 async function payload(state:Network,workspace:Workspace,version:number,user:{userId:string;email:string;displayName:string}){
@@ -30,8 +31,13 @@ export async function POST(request:Request){try{
   else{
     next=applyAction(row.state,action,input,actor);
     if(action==="save_supplier"){
-      const supplier=next.suppliers.find(s=>ownsSupplier(s,actor));
-      if(supplier&&next.packages.find(p=>p.id===supplier.packageId)?.sourceAppId==="owners")workspace=validateSupplierApplication(next,workspace,supplier,input,actor);
+      const submittedId=(input as {id?:string}).id;
+      const supplier=next.suppliers.find(s=>ownsSupplier(s,actor)&&(submittedId?s.id===submittedId:!row.state.suppliers.some(previous=>previous.id===s.id)));
+      if(supplier){
+        workspace=validateSupplierApplication(next,workspace,supplier,input,actor);
+        supplier.applicationRequired=true;
+        if(supplier.status==="more_info_requested")supplier.status="pending";
+      }
       if(supplier)({state:next,workspace}=executeSupplierWorkflow(next,workspace,"supplier.accept_policy",{supplierId:supplier.id,accepted:true,version:next.settings.policyVersion,text:next.settings.policy},actor));
     }
   }

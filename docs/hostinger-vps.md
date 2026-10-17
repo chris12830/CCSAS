@@ -273,3 +273,73 @@ invoice 04. The current runtime remains application commit
 `1c3eaf18e72cc1be42229d64a54e08d3e230ad03`; subsequent documentation-only commits
 do not require an application rebuild. Live payment activation, sandbox invoice
 handling and the broader outstanding workflows remain separate work.
+
+
+## Shared SAS packages and new supplier review — 2026-10-17
+
+The owner chose one shared SAS package structure across the network, including
+CCON: Single Application, Selected Applications and Full Network. Existing SAS
+prices and application coverage settings are retained. These are configurable
+prices, not newly approved live payment terms. The owner explicitly deferred
+turning Stripe live until later in the process; test mode remains in place.
+
+New applications, including `/supplier?app=owners`, use the shared packages and
+one company verification form. The public `/api/catalog` now publishes those
+shared offerings, their CAD and USD prices, membership period, coverage limit and
+eligible enabled applications. It defaults to CAD; `?currency=USD` selects USD.
+Source offerings and supplier-specific preserved contracts are excluded from the
+new-application catalog. Existing CCON contracts can still be retained by their
+current supplier, with accepted membership, royalty and payment history intact.
+No contract migration, price rewrite or financial activation runs on deployment.
+
+Company verification now applies to shared-package submissions as well as
+preserved-contract submissions. Authority, privacy, current criteria answers and
+the supplier's own policy acceptance are validated before saving. New real
+supplier records require this verification before either owner approval action
+can approve them. Previously approved direct SAS records are retained; their
+next supplier profile submission must complete the common form. Existing
+complimentary Plan-It access is not changed by the release.
+
+A supplier answering a more-information request uses Update and resubmit. A
+valid submission returns that application to pending review and retains the
+request, deadline and earlier submission snapshots. Invalid submissions roll
+back. Editing a rejected application does not clear rejection. Approval does not
+settle invoices, create a checkout or grant paid access. The review queue opens
+Supplier services so the owner can inspect the company verification, submitted
+criteria answers and decision history together.
+
+The default criteria introduction now describes the SAS network, with default
+revision 2. Explicitly published criteria and earlier acceptance snapshots are
+retained. Routine network setting changes no longer discard published supplier
+criteria. Each application submission keeps an immutable copy of the company
+information and criteria accepted at that time.
+
+Local validation passed: 131 automated checks (21 SAS, 75 supplier/domain,
+24 supplier/payment-return API, six VPS runtime and five authentication API),
+TypeScript, production build and five compiled-server HTTP return scenarios.
+Changed files introduce no additional ESLint findings; existing repository
+findings remain. Development tests use isolated fixture databases and do not
+create live supplier accounts or send emails.
+
+This release is prepared in the development branch and is not yet deployed.
+The VPS runtime remains `1c3eaf18e72cc1be42229d64a54e08d3e230ad03` until the owner
+builds and starts the new pinned commit. No SQLite schema migration is needed.
+
+Remaining acceptance after deployment:
+
+- Confirm Packages & pricing shows Shared SAS packages and supplier criteria,
+  with the three shared package cards and existing prices.
+- Confirm the public catalog returns the shared package IDs `single`, `bundle`
+  and `network` with the configured amounts and eligible apps.
+- Invite a separate user-controlled test supplier account, complete a genuine
+  company application, request information, resubmit, reject/reopen and approve.
+  Keep the regular owner window separate from the private supplier session.
+  Do not overwrite the existing Plan-It account or fabricate legal details.
+- Confirm the existing Plan-It account, campaign history and complimentary
+  access remain available. Keep the browser payment checks already accepted;
+  live payment setup and sandbox invoice handling are deferred.
+- Complete the separate Laravel CCON supplier entry-point/identity transition.
+  The currently inspected Laravel branch still contains local supplier
+  registration/KYC routes; this SAS release does not switch those routes.
+  Other app integrations, supplier email delivery and remaining hub coverage
+  acceptance are still separate outstanding work.

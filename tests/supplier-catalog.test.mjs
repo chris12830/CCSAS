@@ -1,4 +1,5 @@
 import test from "node:test";
+import {selectableSupplierPackages,sharedPackageCatalog} from "../lib/supplier-packages.mjs";
 import assert from "node:assert/strict";
 import {emptyWorkspace,executeSupplierWorkflow as workflow,scopeWorkspace} from "../lib/supplier-workflows.mjs";
 import {catalogPlanFromSource,applyCatalogAction,validateSupplierApplication,supplierCriteria,campaignPurchaseQuote} from "../lib/supplier-catalog.mjs";
@@ -12,9 +13,35 @@ const details={legalName:"Company Incorporated",companyEmail:"company@example.te
 test("source catalog preserves annual membership and explicit zero ticker prices",()=>{const f=fixture(),p=f.state.packages[0];assert.equal(p.cad,25000);assert.equal(p.billingInterval,"annual");assert.equal(p.staticAllowed,true);assert.equal(p.campaignRates.ticker,0);assert.equal(p.campaignRates.configured,true);});
 test("supplier application requires authority, privacy and the current criterion answers",()=>{const f=fixture(),criteria=supplierCriteria(f.state),answers=Object.fromEntries(criteria.items.map(i=>[i.id,"confirmed"])),input={applicationDetails:details,criteriaRevision:criteria.revision,criteriaAnswers:answers};const saved=validateSupplierApplication(f.state,f.workspace,f.supplier,input,actor);assert.equal(saved.profiles[0].registrationNumber,"REG-123");assert.equal(saved.acceptances[0].userId,actor.userId);assert.throws(()=>validateSupplierApplication(f.state,f.workspace,f.supplier,{...input,applicationDetails:{...details,authorized:false}},actor),e=>e.status===400);assert.throws(()=>validateSupplierApplication(f.state,f.workspace,f.supplier,{...input,criteriaRevision:0},actor),e=>e.status===409);assert.throws(()=>validateSupplierApplication(f.state,f.workspace,f.supplier,{...input,criteriaAnswers:{}},actor),e=>e.status===400);});
 test("owner cannot submit or manufacture the supplier's criteria acceptance",()=>{const f=fixture();assert.throws(()=>validateSupplierApplication(f.state,f.workspace,f.supplier,{applicationDetails:details},owner),e=>e.status===403);});
-test("published criteria preserve earlier accepted snapshots",()=>{const f=fixture(),before=supplierCriteria(f.state),accepted=validateSupplierApplication(f.state,f.workspace,f.supplier,{applicationDetails:details,criteriaRevision:before.revision,criteriaAnswers:Object.fromEntries(before.items.map(i=>[i.id,"confirmed"]))},actor);const changed=applyCatalogAction(f.state,accepted,"catalog.criteria",{baseRevision:1,title:"Updated supplier criteria",introduction:"Updated published criteria for supplier applications.",items:before.items.slice(0,2)},owner);assert.equal(changed.state.settings.supplierCriteria.revision,2);assert.equal(changed.workspace.profiles[0].criteriaSnapshot.items.length,4);assert.throws(()=>applyCatalogAction(changed.state,changed.workspace,"catalog.criteria",{baseRevision:1},owner),e=>e.status===409);});
+test("published criteria preserve earlier accepted snapshots",()=>{const f=fixture(),before=supplierCriteria(f.state),accepted=validateSupplierApplication(f.state,f.workspace,f.supplier,{applicationDetails:details,criteriaRevision:before.revision,criteriaAnswers:Object.fromEntries(before.items.map(i=>[i.id,"confirmed"]))},actor);const changed=applyCatalogAction(f.state,accepted,"catalog.criteria",{baseRevision:before.revision,title:"Updated supplier criteria",introduction:"Updated published criteria for supplier applications.",items:before.items.slice(0,2)},owner);assert.equal(changed.state.settings.supplierCriteria.revision,before.revision+1);assert.equal(changed.workspace.profiles[0].criteriaSnapshot.items.length,4);assert.throws(()=>applyCatalogAction(changed.state,changed.workspace,"catalog.criteria",{baseRevision:before.revision},owner),e=>e.status===409);});
 test("free tickers create no fake receipts and static access needs the annual contract",()=>{const f=fixture(),campaign={supplierId:"supplier",appIds:["owners"],placement:"Dashboard ticker",tickerSpeed:"normal"};assert.equal(campaignPurchaseQuote(f.state,campaign).free,true);assert.equal(campaignPurchaseQuote(f.state,{...campaign,placement:"Resource hub static"}).amountCents,50000);f.state.packages[0].staticAllowed=false;assert.throws(()=>campaignPurchaseQuote(f.state,{...campaign,placement:"Resource hub static"}),e=>e.status===403);});
 test("unconfigured and unpaid campaign purchases are rejected",()=>{const f=fixture(),campaign={supplierId:"supplier",appIds:["owners"],placement:"Dashboard ticker",tickerSpeed:"normal"};f.state.packages[0].campaignRates.configured=false;assert.throws(()=>campaignPurchaseQuote(f.state,campaign),e=>e.status===409);f.state.packages[0].campaignRates.configured=true;f.supplier.billingStatus="unpaid";assert.throws(()=>campaignPurchaseQuote(f.state,campaign),e=>e.status===409);});
 test("private preserved contracts cannot be accepted by another supplier",()=>{const f=fixture();f.state.packages[0].supplierId="another";assert.throws(()=>workflow(f.state,f.workspace,"supplier.accept_terms",{supplierId:"supplier",accepted:true,version:"v1",text:"Policy",packageId:f.supplier.packageId,currency:"CAD",amountCents:2500000,royaltyBps:500},actor),e=>e.status===403);});
 test("global help resources require a supplier record and are limited to published content",()=>{const f=fixture();f.workspace.library.push({id:"published",supplierId:"",status:"published",fileKey:"private-object"},{id:"draft",supplierId:"",status:"draft"});assert.equal(scopeWorkspace(f.workspace,f.state,actor).library.length,1);assert.equal(scopeWorkspace(f.workspace,f.state,actor).library[0].fileKey,undefined);assert.equal(scopeWorkspace(f.workspace,f.state,{userId:"other",email:"other@example.test",owner:false}).library.length,0);});
 test("owner-only catalog writes keep supplier price changes from self-approval",()=>{const f=fixture();assert.throws(()=>applyCatalogAction(f.state,f.workspace,"catalog.plan",{},actor),e=>e.status===403);});
+
+
+test("new applications and public catalog exclude source offers, private contracts and disabled packages",()=>{
+ const f=fixture(),legacy=f.state.packages[0];
+ const shared=[{id:"single",name:"Single",description:"One app",enabled:true,cad:49,usd:39,maxApps:1},{id:"bundle",name:"Selected",description:"Three apps",enabled:true,cad:99,usd:79,maxApps:3},{id:"network",name:"Network",description:"All apps",enabled:true,cad:149,usd:119,maxApps:99}];
+ const privateContract={...legacy,id:"private-contract",supplierId:f.supplier.id},disabled={...shared[0],id:"disabled",enabled:false};
+ f.state.packages.push(...shared,privateContract,disabled);Object.assign(f.state.apps[0],{name:"CCON",enabled:true,countries:["CA","US"],packages:f.state.packages.map(p=>p.id)});
+ f.state.apps.push({id:"future",name:"Future app",enabled:false,countries:["CA"],packages:["network"]});
+ const before=JSON.stringify(f);
+ assert.deepEqual(selectableSupplierPackages(f.state.packages).map(p=>p.id),["single","bundle","network"]);
+ assert.deepEqual(selectableSupplierPackages(f.state.packages,privateContract.id).map(p=>p.id),["single","bundle","network","private-contract"]);
+ const catalog=sharedPackageCatalog(f.state,"USD");assert.deepEqual(catalog.map(p=>p.id),["single","bundle","network"]);
+ assert.equal(catalog[2].membershipFeeCents,11900);assert.deepEqual(catalog[2].prices,{CAD:14900,USD:11900});
+ assert.deepEqual(catalog[2].applications.map(a=>a.id),["owners"]);assert.equal(JSON.stringify(f),before);
+});
+
+test("shared packages do not rewrite or open an existing CCON contract to new suppliers",()=>{
+ const f=fixture(),legacy=f.state.packages[0],before=structuredClone(legacy);
+ const input={supplierId:f.supplier.id,accepted:true,version:"v1",text:"Policy",packageId:legacy.id,currency:"CAD",amountCents:2500000,royaltyBps:500};
+ const retained=workflow(f.state,f.workspace,"supplier.accept_terms",input,actor);
+ assert.equal(retained.workspace.profiles[0].terms.amountCents,2500000);assert.equal(retained.workspace.profiles[0].terms.billingInterval,"annual");
+ f.state.packages.push({id:"single",enabled:true,cad:49,usd:39});f.supplier.packageId="single";
+ assert.throws(()=>workflow(f.state,f.workspace,"supplier.accept_terms",input,actor),e=>e.status===409);
+ assert.deepEqual(f.state.packages[0],before);
+ assert.throws(()=>applyCatalogAction(f.state,f.workspace,"catalog.plan",{name:"New CCON membership"},owner),e=>e.status===409);
+});

@@ -1,4 +1,6 @@
 import {campaignPurchaseQuote} from "./supplier-catalog.mjs";
+import {isSharedPackage,selectableSupplierPackages,supplierApprovalError} from "./supplier-packages.mjs";
+import type {Workspace} from "./supplier-workflows.mjs";
 import {z} from "zod";
 import {type Network, type Supplier, type Campaign, type Country, type Audience, POLICY_VERSION, today, categories, placements} from "./sas-model";
 
@@ -10,7 +12,7 @@ const date=z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(v=>!Number.isNaN(Date.
 const supplierSchema=z.object({id:id.optional(),name,contact:name,email:z.string().trim().email().max(200),website:optionalUrl,category:z.string().trim().min(1).max(100),countries,packageId:id,currency:z.enum(["CAD","USD"]),accepted:z.boolean(),policyVersion:z.string().optional(),policyText:z.string().optional(),sample:z.boolean().optional()});
 const campaignSchema=z.object({id:id.optional(),supplierId:id,name,text:z.string().trim().min(5).max(500),url,country:z.enum(["CA","US"]),currency:z.enum(["CAD","USD"]),appIds:z.array(id).min(1),placement:z.string().refine(v=>placements.includes(v)),region:z.string().trim().max(80),hubId:z.string().max(100).optional(),tickerSpeed:z.enum(["normal","premium"]).optional(),start:date,end:date,submit:z.boolean()});
 export type Actor={userId:string;email:string;owner:boolean};
-export function applyAction(previous:Network, action:string, input:unknown, actor:Actor):Network{
+export function applyAction(previous:Network, action:string, input:unknown, actor:Actor,workspace?:Workspace):Network{
   const state=structuredClone(previous),now=new Date().toISOString();
   if(!actor.owner&&!["save_supplier","save_campaign"].includes(action))throw new Error("Only the network owner can perform this action.");
   let message="";
@@ -29,6 +31,7 @@ export function applyAction(previous:Network, action:string, input:unknown, acto
     case "save_package":{
       const v=z.object({id,name,description:z.string().trim().min(5).max(200),maxApps:z.number().int().min(1).max(99),cad:z.number().min(0).max(1000000),usd:z.number().min(0).max(1000000),enabled:z.boolean(),checkoutCad:optionalUrl,checkoutUsd:optionalUrl}).parse(input);
       if(!state.packages.some(p=>p.id===v.id))throw new Error("Package not found.");
+      if(!isSharedPackage(state.packages.find(p=>p.id===v.id)!))throw new Error("Preserved contracts are managed separately from shared SAS packages.");
       state.packages=state.packages.map(p=>p.id===v.id?{...p,...v}:p); message=`${v.name} package updated.`;break;
     }
     case "save_supplier":{
@@ -41,9 +44,10 @@ export function applyAction(previous:Network, action:string, input:unknown, acto
       if(!state.packages.some(p=>p.id===v.packageId&&p.enabled))throw new Error("Choose an available package.");
       const selectedPackage=state.packages.find(p=>p.id===v.packageId)!;
       if(selectedPackage.supplierId&&selectedPackage.supplierId!==existing?.id)throw new Error("This preserved contract belongs to another supplier.");
+      if(!selectableSupplierPackages(state.packages,existing?.packageId).some(p=>p.id===v.packageId))throw new Error("Choose a shared SAS package. Existing CCON contracts are retained for their current suppliers.");
       const changedPackage=existing&&(existing.packageId!==v.packageId||existing.currency!==v.currency);
       const next:Supplier={...existing,id:v.id??crypto.randomUUID(),name:v.name,contact:v.contact,email,website:v.website,category:v.category,countries:v.countries,packageId:v.packageId,currency:v.currency,
-        status:existing?.status??"pending",billingStatus:changedPackage?"unpaid":existing?.billingStatus??"unpaid",paidUntil:changedPackage?"":existing?.paidUntil??"",sample:existing?.sample??(actor.owner&&v.sample===true),userId:existing?.userId??(!actor.owner?actor.userId:undefined),policyAcceptedAt:actor.owner?(existing?.policyAcceptedAt??""):(existing?.policyVersion===state.settings.policyVersion?existing.policyAcceptedAt:now),policyVersion:actor.owner?(existing?.policyVersion??""):state.settings.policyVersion,policyText:actor.owner?(existing?.policyText??""):state.settings.policy,createdAt:existing?.createdAt??now};
+        status:existing?.status??"pending",applicationRequired:existing?.applicationRequired??(!existing&&!(actor.owner&&v.sample===true)),billingStatus:changedPackage?"unpaid":existing?.billingStatus??"unpaid",paidUntil:changedPackage?"":existing?.paidUntil??"",sample:existing?.sample??(actor.owner&&v.sample===true),userId:existing?.userId??(!actor.owner?actor.userId:undefined),policyAcceptedAt:actor.owner?(existing?.policyAcceptedAt??""):(existing?.policyVersion===state.settings.policyVersion?existing.policyAcceptedAt:now),policyVersion:actor.owner?(existing?.policyVersion??""):state.settings.policyVersion,policyText:actor.owner?(existing?.policyText??""):state.settings.policy,createdAt:existing?.createdAt??now};
       if(existing)state.suppliers=state.suppliers.map(s=>s.id===next.id?next:s);else state.suppliers.push(next);
       message=`${next.name} supplier application ${existing?"updated":"received"}.`;break;
     }
@@ -81,7 +85,10 @@ export function applyAction(previous:Network, action:string, input:unknown, acto
     case "supplier_status":{
       const v=z.object({id,status:z.enum(["approved","pending","suspended","rejected"])}).parse(input),s=state.suppliers.find(s=>s.id===v.id);
       if(!s)throw new Error("Supplier not found.");
-      if(v.status==="approved"&&!s.policyAcceptedAt)throw new Error("Supplier policy acceptance is required.");
+      if(v.status==="approved"){
+        const error=supplierApprovalError(s,state.packages.find(p=>p.id===s.packageId),workspace?.profiles.find(p=>p.supplierId===s.id));
+        if(error)throw Object.assign(new Error(error),{status:409});
+      }
       s.status=v.status;message=`${s.name} ${v.status}.`;break;
     }
     case "save_campaign":{
@@ -127,7 +134,7 @@ export function applyAction(previous:Network, action:string, input:unknown, acto
     }
     case "save_settings":{
       const v=z.object({name,maxCopy:z.number().int().min(60).max(120),speed:z.number().int().min(20).max(80),paused:z.boolean(),showSamples:z.boolean(),policy:z.string().trim().min(50).max(5000)}).parse(input);
-      state.settings={...v,policyVersion:v.policy===previous.settings.policy?previous.settings.policyVersion:`${today()}.${crypto.randomUUID().slice(0,8)}`};
+      state.settings={...previous.settings,...v,policyVersion:v.policy===previous.settings.policy?previous.settings.policyVersion:`${today()}.${crypto.randomUUID().slice(0,8)}`};
       message="Network settings saved.";break;
     }
     default:throw new Error("Unknown action.");
