@@ -1,7 +1,9 @@
 # CC SAS independent Hostinger deployment
 
-Source baseline: integration commit 4ee04930457740ddca02d756efd3bee0938c71ef.
-Work stays on feature/hostinger-vps. Main and existing live sites are unchanged.
+Historical conversion baseline: integration commit
+4ee04930457740ddca02d756efd3bee0938c71ef. Current development work is on
+feature/complimentary-supplier-access. The deployed application commit is
+1c3eaf18e72cc1be42229d64a54e08d3e230ad03. No merge to main was performed.
 
 ## Conversion
 
@@ -21,19 +23,25 @@ do not replace their existing user IDs or infer consent from an email match.
 
 ## Release status
 
-This branch is staging work, not a production deployment. Local supplier domain
-tests and VPS runtime tests run without third-party dependencies. Full API tests,
-TypeScript and Next build require installed dependencies and the GitHub workflow.
-No claim of production readiness is made before those checks and real HTTPS
-browser tests pass. No server commands in this document have been executed on
-the owner's VPS. No production data has been imported.
+CC SAS is deployed at https://childcaresas.com on the owner's VPS. The latest
+application image was built and started there, and the supplier browser confirmed
+its updated labels and cancellation message. The build runs the automated tests,
+authentication checks, TypeScript, production build and compiled-server return
+checks described in the dated checkpoints below.
+
+Stripe invoice checkout is enabled in test mode. The targeted sandbox success,
+decline, cancellation, expiration and account-return checks passed. These checks
+use the existing Plan-It supplier account; they do not establish live payment
+acceptance or complete acceptance of new-business review and other integrations.
+Live Stripe configuration and deliberate handling of the sandbox invoices remain
+separate work.
 
 ## Existing server constraints
 
 Host: srv1177396.hstgr.cloud, Ubuntu 24.04, IP 72.60.114.80.
 Preserve childcareinvoice.com, childcareregister.com and api.childcareregister.com.
-Ports 3000, 5000 and 5010 already have applications; use a verified unused
-127.0.0.1:3100 for CC SAS. Do not stop their containers or overwrite their Nginx
+Ports 3000, 5000 and 5010 belong to other applications. CC SAS uses
+127.0.0.1:3100. Do not stop their containers or overwrite their Nginx
 configuration. Make a VPS snapshot and keep existing database/file backups before
 installing anything. Daily VPS backups were reported disabled.
 
@@ -76,8 +84,9 @@ approval or payment evidence.
 Other applications must switch their server-side SAS base URL and use their own
 X-SAS-App-Key. Existing CCON protected historical URLs remain in the migration
 logic; they require a separate reviewed migration and must not be redirected to
-unprotected files. Stripe and email stay disabled until real credentials, verified
-webhooks/sender configuration and staging acceptance are complete.
+unprotected files. Keep Stripe in test mode until live credentials, verified live
+webhooks and live acceptance are in place. Supplier email configuration and sender
+acceptance are separate work.
 
 ## Sandbox checkout checkpoint — 2026-10-16
 
@@ -174,7 +183,8 @@ supplier account check. A separate header screenshot was not collected between
 cancellation and resuming the payment.
 
 Remaining payment checks and follow-up:
-- Browser-check the display wording follow-up after deployment.
+- Retain the sandbox audit history and handle the labelled test invoices and open
+  sandbox checkout before offering live invoice collection on this account.
 - Live Stripe configuration and live payment acceptance remain separate work.
   Stripe is still in test mode; these checks do not establish live readiness.
 
@@ -232,6 +242,34 @@ not been configured.
 Validation passed: 122 existing automated checks; TypeScript; production build;
 and five compiled-server HTTP payment-return scenarios. The changed supplier
 workspace has no ESLint findings. The main client retains its nine existing
-findings with none added. This display update still requires VPS deployment and
-a browser check of its wording. Stripe remains in test mode; live configuration
-and acceptance are separate work.
+findings with none added. The deployment and browser acceptance of this display
+update are recorded below. Stripe remains in test mode; live configuration and
+acceptance are separate work.
+
+## Display deployment and final browser acceptance — 2026-10-17
+
+The owner's terminal showed a fast-forward from `40edb7a` to
+`1c3eaf18e72cc1be42229d64a54e08d3e230ad03`, a successful Docker build, and
+`ccsas-app-1` started with status Up on `127.0.0.1:3100`. The deployment command
+checked the exact source commit before building and recreated only the app service.
+
+The following supplier screenshot showed Plan-It Inc., Signed in:
+christmckinnon@gmail.com, Advertising access, Complimentary access through
+2026-10-22, and the new guidance to open Billing for invoices and payment options.
+There was no owner preview banner or Super Admin link.
+
+For the final wording check, the supplier opened a new sandbox checkout attempt
+for the same unpaid invoice `CCSAS-SANDBOX-20261017-04`, left the payment fields
+empty, and returned with Stripe's back arrow. The Billing screenshot displayed
+Checkout cancelled and stated that no payment was confirmed, the invoice was
+still unpaid, and checkout could be resumed. The three earlier `test_paid`
+receipts remained; the prior expired attempt and new open attempt were both
+visible, and all four invoices remained open. The open attempt is intentionally
+resumable after leaving checkout; it is not a confirmed payment or a new invoice.
+
+This completes browser acceptance of the display update and the targeted sandbox
+checkout checks recorded above. No additional successful payment was made for
+invoice 04. The current runtime remains application commit
+`1c3eaf18e72cc1be42229d64a54e08d3e230ad03`; subsequent documentation-only commits
+do not require an application rebuild. Live payment activation, sandbox invoice
+handling and the broader outstanding workflows remain separate work.
