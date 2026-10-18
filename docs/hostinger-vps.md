@@ -25,8 +25,9 @@ do not replace their existing user IDs or infer consent from an email match.
 
 CC SAS is deployed at https://childcaresas.com on the owner's VPS. The latest
 shared-package application image was built and started there, and the live public
-catalog returned the shared SAS packages in CAD and USD. New-supplier browser
-acceptance remains pending. The earlier payment-return labels and cancellation
+catalog returned the shared SAS packages in CAD and USD. Fresh supplier signup
+and first application submission are now confirmed in the browser; owner review
+and resubmission acceptance remain pending. The earlier payment-return labels and cancellation
 message were already confirmed in the supplier browser. The build runs the
 automated tests, authentication checks, TypeScript, production build and
 compiled-server return checks described in the dated checkpoints below.
@@ -333,10 +334,11 @@ Remaining browser and integration acceptance:
   with the three shared package cards and existing prices.
 - Confirm the public catalog returns the shared package IDs `single`, `bundle`
   and `network` with the configured amounts and eligible apps.
-- Invite a separate user-controlled test supplier account, complete a genuine
-  company application, request information, resubmit, reject/reopen and approve.
-  Keep the regular owner window separate from the private supplier session.
-  Do not overwrite the existing Plan-It account or fabricate legal details.
+- The separate supplier test login and first application submission are confirmed
+  in the browser. Next test an information request, supplier resubmission,
+  rejection/reopening and approval. Keep the regular owner window separate from
+  the private supplier session and preserve the original Plan-It account.
+  Submitted business details still require the owner's substantive review.
 - Confirm the existing Plan-It account, campaign history and complimentary
   access remain available. Keep the browser payment checks already accepted;
   live payment setup and sandbox invoice handling are deferred.
@@ -368,3 +370,32 @@ still require browser acceptance. No new real supplier account or invitation was
 created by these read-only checks. No emails were sent, provider settings changed
 or financial records mutated. Live payment activation remains explicitly deferred.
 Documentation-only follow-ups after this runtime commit need no image rebuild.
+
+
+## Fresh supplier application browser checkpoint — 2026-10-18
+
+The supplier test invitation was generated in the owner's VPS terminal. The
+registered test login uses the user-controlled address
+`christmckinnon+ccsas-onboarding-20261017@gmail.com`. Reusing the consumed
+activation link later returned the expected invitation error. After directing
+the user to `/login` and providing a password reset command scoped to that test
+login, the user reported that sign-in was working. No password or invitation
+token is retained in these notes.
+
+The subsequent private Supplier screenshot showed the matching test identity
+and `Plan-It Inc. (onboarding test)` with Pending approval, Single Application,
+Canada and Payment needed. Supplier services showed Account active and
+Application pending. Company verification details were recorded, with authority
+and privacy acceptance dated 2026-10-18. Criteria revision 2 showed all four
+criteria confirmed. Supplier policy acceptance was recorded for 2026-10-18,
+version 2026-10-05.1. The screenshot showed no campaigns and no recorded
+payments. It showed no owner preview banner or Super Admin control.
+
+This confirms the initial application submission and consent-recording flow in
+the deployed browser. It does not independently verify the company's legal,
+registration or contact information. No approval or advertising access has been
+granted to this test account. Owner information request, supplier resubmission,
+rejection/reopening and approval remain the next browser acceptance checks.
+The original Plan-It supplier account and its existing complimentary access
+remain separate. Stripe live activation is still deferred. This checkpoint
+changes documentation only and needs no application rebuild.
