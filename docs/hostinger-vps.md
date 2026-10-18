@@ -25,9 +25,10 @@ do not replace their existing user IDs or infer consent from an email match.
 
 CC SAS is deployed at https://childcaresas.com on the owner's VPS. The latest
 shared-package application image was built and started there, and the live public
-catalog returned the shared SAS packages in CAD and USD. Fresh supplier signup
-and first application submission are now confirmed in the browser; owner review
-and resubmission acceptance remain pending. The earlier payment-return labels and cancellation
+catalog returned the shared SAS packages in CAD and USD. Fresh supplier signup,
+first application submission, an owner information request and supplier
+resubmission are now confirmed in the browser. Rejection/reopening and approval
+acceptance remain pending. The earlier payment-return labels and cancellation
 message were already confirmed in the supplier browser. The build runs the
 automated tests, authentication checks, TypeScript, production build and
 compiled-server return checks described in the dated checkpoints below.
@@ -335,8 +336,8 @@ Remaining browser and integration acceptance:
 - Confirm the public catalog returns the shared package IDs `single`, `bundle`
   and `network` with the configured amounts and eligible apps.
 - The separate supplier test login and first application submission are confirmed
-  in the browser. Next test an information request, supplier resubmission,
-  rejection/reopening and approval. Keep the regular owner window separate from
+  in the browser, including an information request and resubmission. Next test
+  rejection, supplier correction while rejected, owner reopening and approval. Keep the regular owner window separate from
   the private supplier session and preserve the original Plan-It account.
   Submitted business details still require the owner's substantive review.
 - Confirm the existing Plan-It account, campaign history and complimentary
@@ -399,3 +400,38 @@ rejection/reopening and approval remain the next browser acceptance checks.
 The original Plan-It supplier account and its existing complimentary access
 remain separate. Stripe live activation is still deferred. This checkpoint
 changes documentation only and needs no application rebuild.
+
+
+## Information request and resubmission browser checkpoint — 2026-10-18
+
+For `Plan-It Inc. (onboarding test)`, the owner requested more information with
+note "Please confirm the Canadian provinces and territories you serve." and
+deadline 2026-10-25. The private Supplier screenshot showed the corresponding
+request banner, note and deadline, plus Update and resubmit. The package remained
+Single Application, the service country Canada and billing Payment needed.
+
+Following the supplier's resubmission, the private screenshot showed Pending
+approval again. The request banner was gone, and the earlier request, note and
+deadline remained in Application history. Criteria revision 2 and refreshed
+authority/privacy acceptance were displayed. No campaigns or payments appeared.
+
+The provinces were initially entered under Registration authority while Service
+regions still read Canada wide. A subsequent supplier screenshot showed Service
+regions corrected to Ontario, New Brunswick and Manitoba, with approval still
+pending and billing still Payment needed. Registration authority still showed
+the provinces and needs correction before substantive approval. These browser
+checks confirm the workflow and displayed persistence; they do not validate
+company registration or contact information.
+
+Next perform a controlled rejection on this test account for the remaining
+registration-authority issue, correct it as the supplier while rejected, then
+reopen and review it as owner. Keep the original Plan-It account separate and
+retain review and consent history. No payment or advertising access is to be
+fabricated for the test. The application runtime remains
+`4e8849100727b73b89f53a065990e04bd37f4e6e`; these notes need no rebuild. Live
+payment activation remains deferred.
+
+UI follow-ups observed during acceptance: the more-information status badge and
+review history display the raw `more_info_requested` value, and the narrow
+history table wraps the note heavily. Record these as display improvements for
+a later tested change; they do not block the review-state checks.
