@@ -26,9 +26,10 @@ do not replace their existing user IDs or infer consent from an email match.
 CC SAS is deployed at https://childcaresas.com on the owner's VPS. The latest
 shared-package application image was built and started there, and the live public
 catalog returned the shared SAS packages in CAD and USD. Fresh supplier signup,
-first application submission, an owner information request and supplier
-resubmission are now confirmed in the browser. Rejection/reopening and approval
-acceptance remain pending. The earlier payment-return labels and cancellation
+application submission, an information request, supplier resubmission,
+rejection, correction while rejected, owner reopening and final approval are
+now confirmed in the browser. Approval leaves this test supplier unpaid.
+CCON signup handoff and the broader integration checks remain pending. The earlier payment-return labels and cancellation
 message were already confirmed in the supplier browser. The build runs the
 automated tests, authentication checks, TypeScript, production build and
 compiled-server return checks described in the dated checkpoints below.
@@ -336,8 +337,9 @@ Remaining browser and integration acceptance:
 - Confirm the public catalog returns the shared package IDs `single`, `bundle`
   and `network` with the configured amounts and eligible apps.
 - The separate supplier test login and first application submission are confirmed
-  in the browser, including an information request and resubmission. Next test
-  rejection, supplier correction while rejected, owner reopening and approval. Keep the regular owner window separate from
+  in the browser, including information request/resubmission, rejection,
+  correction while rejected, owner reopening and final approval. These targeted
+  review checks are complete; approval did not activate paid membership. Keep the regular owner window separate from
   the private supplier session and preserve the original Plan-It account.
   Submitted business details still require the owner's substantive review.
 - Confirm the existing Plan-It account, campaign history and complimentary
@@ -435,3 +437,68 @@ UI follow-ups observed during acceptance: the more-information status badge and
 review history display the raw `more_info_requested` value, and the narrow
 history table wraps the note heavily. Record these as display improvements for
 a later tested change; they do not block the review-state checks.
+
+
+## Rejection, correction, reopening and approval checkpoint — 2026-10-18
+
+The private Supplier screenshot first showed `Plan-It Inc. (onboarding test)`
+Rejected with Payment needed. After the supplier edited the company verification
+form, Registration authority showed Ontario and Service regions showed Ontario,
+New Brunswick and Manitoba. The application remained Rejected and billing still
+showed Payment needed. The earlier information request and review decisions
+remained in Application history.
+
+The next owner review explicitly reopened the application as pending with note
+"Reopened after registration authority correction." and then approved it with
+note "Onboarding workflow test completed." The final private Supplier screenshot
+showed Approved, Single Application, Canada and Payment needed. Supplier services
+showed Account active and Application approved. No campaigns or recorded payments
+were shown. The signed-in identity remained the separate onboarding test login.
+
+The visible decision history retained the information request, rejection, an
+intermediate approval followed by another rejection, the explicit pending
+reopening and the final approval. The extra intermediate decisions are preserved
+rather than omitted from the acceptance record. The latest decision agrees with
+the current Approved status. Supplier edits did not clear rejection; approval
+changed only review state and did not settle billing or activate paid access.
+These are workflow acceptance results, not independent verification of company
+registration or contact details.
+
+The targeted new supplier application/review checks are complete. Stripe live
+activation remains deferred. Before production launch, retain required audit
+history and deliberately close or otherwise exclude the onboarding test account
+from real operating activity; the account currently has no paid access. Existing
+Plan-It complimentary access and the original supplier account remain separate
+from this test record. The running application commit is still
+`4e8849100727b73b89f53a065990e04bd37f4e6e`; documentation-only commits need no
+image rebuild.
+
+An additional display follow-up is to align the edit-form label Business registry
+or authority with the Account screen label Registration authority, so users can
+find the same field consistently. No application code was changed for these
+checkpoints.
+
+### CCON signup handoff preflight
+
+Read-only inspection of `chris12830/childcareownersnetwork-laravel`, branch
+`feature/ccsas-dashboard-connection` at
+`3115809d1729fb174b0e357777509948eeb1d113`, confirms the public `/suppliers` view
+uses the named `supplier.register` route for both Register as a supplier links.
+That guest route is GET `/register/supplier`, handled by
+`Modules/KycAuth/app/Http/Controllers/AuthController.php::showSupplierRegister`,
+which renders the local `auth.supplier_register` view. Its POST handler still
+creates a local supplier user and sends them to local supplier KYC. The current
+CCON configuration only defines the existing feed enabled flag and app key; it
+has no supplier signup handoff setting yet.
+
+The live public supplier pages could not be retrieved by the web tool. This is a
+retrieval limitation, not proof of an HTTP error on the site. Confirm the live
+Register button destination in the owner's browser before switching the entry
+point. The next implementation must use the shared SAS application flow while
+preserving existing CCON supplier data, core verification and immutable KYC
+history. The project's AGENTS.md, applicable KycAuth rule and Laravel Best
+Practices guidance were read. No Boost tools were exposed. The local execution
+environment was unavailable, so no Laravel code was changed and no new Laravel
+test or formatter result is claimed. Restore an execution environment before
+implementing and validating that change, or use an isolated, reviewable remote
+validation workflow. Do not deploy untested handoff changes over the live app.
