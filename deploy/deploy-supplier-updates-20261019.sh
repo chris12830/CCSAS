@@ -56,7 +56,7 @@ for row in rows:
     labels=row["Config"].get("Labels") or {}
     if labels.get("com.docker.compose.project")=="ccsas" and labels.get("com.docker.compose.service")=="app":
         continue
-    saved.append({"id":row["Id"],"name":row["Name"],"image":row["Image"],"running":row["State"]["Running"],"started":row["State"]["StartedAt"],"ports":row["NetworkSettings"].get("Ports"),"bindings":row["HostConfig"].get("PortBindings") or {},"networkMode":row["HostConfig"]["NetworkMode"]})
+    saved.append({"id":row["Id"],"name":row["Name"],"image":row["Image"],"running":row["State"]["Running"],"started":row["State"]["StartedAt"],"ports":row["NetworkSettings"].get("Ports"),"bindings":row["HostConfig"].get("PortBindings") or {},"networkMode":row["HostConfig"]["NetworkMode"],"restartPolicy":row["HostConfig"].get("RestartPolicy") or {}})
 print(json.dumps(sorted(saved,key=lambda row:row["id"]),sort_keys=True,separators=(",",":")))
 PY
 }
@@ -67,17 +67,20 @@ import json,sys
 # Restart timestamps are audit context. Check the identity, image, ports and
 # running state so independent restarts do not masquerade as app changes.
 auxiliary="218b4c593e3c238dfbb329e003cde89b95797db864d1bc51e85317e99db15048"
-fields=("id","name","image","bindings","networkMode")
+expected_ports={"5555/tcp":[{"HostIp":"","HostPort":"5564"}]}
+expected_network="christmckinnon2_network"
+expected_policy={"Name":"always","MaximumRetryCount":0}
+fields=("id","name","image","bindings","networkMode","restartPolicy")
 def normalize(path):
     rows=json.loads(Path(path).read_text())
     saved={}
     for row in rows:
         item={field:row[field] for field in fields}
         if row["id"]==auxiliary:
-            if not row["name"].endswith("prisma-studio") or row["bindings"] or row["networkMode"]=="host":
-                raise SystemExit("The diagnosed auxiliary container no longer matches its private configuration.")
-            # This specific private tool restarts independently. Its runtime
-            # remains in the audit, while its identity/image/networking stay guarded.
+            if not row["name"].endswith("prisma-studio") or row["bindings"]!=expected_ports or row["networkMode"]!=expected_network or row["restartPolicy"]!=expected_policy:
+                raise SystemExit("The diagnosed Prisma Studio configuration changed; inspect it.")
+            # The existing restart loop changes runtime port visibility. Keep
+            # that audit context while guarding its actual configured mapping.
         else:
             item["ports"]=row["ports"] or {}
             item["running"]=row["running"]
@@ -263,7 +266,7 @@ if shutil.disk_usage("/root").free < image["Size"]*2+data*2+1024**3:
     raise SystemExit("Insufficient free space for the fresh rollback backup.")
 PY
 
-# Confirm the prior mismatch was only runtime data for the diagnosed private tool.
+# Confirm the prior mismatch was only runtime data for the diagnosed Prisma Studio container.
 python3 - <<'PY'
 from pathlib import Path
 import json,subprocess
@@ -282,15 +285,23 @@ left,right=before[auxiliary],after[auxiliary]
 fields={field for field in set(left)|set(right) if left.get(field)!=right.get(field)}
 if not fields <= {"running","started","ports"}:
     raise SystemExit("The auxiliary image or configuration changed; inspect it.")
-if any(value for ports in (left.get("ports"),right.get("ports")) for value in (ports or {}).values()):
-    raise SystemExit("The auxiliary tool had published ports; inspect it.")
+expected_ports={"5555/tcp":[{"HostIp":"","HostPort":"5564"}]}
+expected_network="christmckinnon2_network"
+expected_policy={"Name":"always","MaximumRetryCount":0}
+def expected_runtime_ports(ports):
+    if not ports: return True
+    if set(ports)!={"5555/tcp"}: return False
+    bindings=ports["5555/tcp"]
+    return isinstance(bindings,list) and bool(bindings) and all(binding.get("HostPort")=="5564" and binding.get("HostIp") in ("","0.0.0.0","::") for binding in bindings)
+if not all(expected_runtime_ports(ports) for ports in (left.get("ports"),right.get("ports"))):
+    raise SystemExit("The historical active ports do not match the observed 5564-to-5555 mapping.")
 live=json.loads(subprocess.check_output(["docker","inspect",auxiliary],text=True))[0]
-if not live["Name"].endswith("prisma-studio") or live["HostConfig"].get("PortBindings") or live["HostConfig"]["NetworkMode"]=="host":
-    raise SystemExit("The auxiliary tool is no longer the checked private Prisma Studio container.")
+if not live["Name"].endswith("prisma-studio") or (live["HostConfig"].get("PortBindings") or {})!=expected_ports or live["HostConfig"]["NetworkMode"]!=expected_network or live["HostConfig"].get("RestartPolicy")!=expected_policy:
+    raise SystemExit("The observed Prisma Studio image/network/port configuration changed; inspect it.")
 if live["Image"]!=left["image"]:
     raise SystemExit("The auxiliary image changed after the previous attempt.")
-print("Previous mismatch confirmed as private Prisma Studio runtime fields:",",".join(sorted(fields))+".")
-print("Auxiliary runtime status:",live["State"]["Status"]+"; restart count:",str(live["RestartCount"])+". Configuration remains guarded.")
+print("Previous mismatch confirmed as Prisma Studio runtime fields:",",".join(sorted(fields))+".")
+print("Prisma Studio configuration verified: host 5564 to container 5555. Runtime:",live["State"]["Status"]+"; restart count:",str(live["RestartCount"])+".")
 PY
 
 sas_backup=$(mktemp -d /root/ccsas-backups/supplier-deploy-20261019-XXXXXX)
