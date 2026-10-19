@@ -16,6 +16,7 @@ readonly sas_candidate_id=sha256:ba9c940b8bea5e753f8fa94593fb09a86101ef674bcb195
 readonly sas_live_tag=ccsas-app:latest
 sas_backup=
 sas_changed=0
+sas_release_exists=0
 
 sas_fail() { printf '%s\n' "$*" >&2; return 1; }
 sas_compose() { docker compose -f "$sas_compose_file" "$@"; }
@@ -55,7 +56,7 @@ for row in rows:
     labels=row["Config"].get("Labels") or {}
     if labels.get("com.docker.compose.project")=="ccsas" and labels.get("com.docker.compose.service")=="app":
         continue
-    saved.append({"id":row["Id"],"image":row["Image"],"running":row["State"]["Running"],"started":row["State"]["StartedAt"],"ports":row["NetworkSettings"].get("Ports")})
+    saved.append({"id":row["Id"],"name":row["Name"],"image":row["Image"],"running":row["State"]["Running"],"started":row["State"]["StartedAt"],"ports":row["NetworkSettings"].get("Ports"),"bindings":row["HostConfig"].get("PortBindings") or {},"networkMode":row["HostConfig"]["NetworkMode"]})
 print(json.dumps(sorted(saved,key=lambda row:row["id"]),sort_keys=True,separators=(",",":")))
 PY
 }
@@ -65,17 +66,30 @@ from pathlib import Path
 import json,sys
 # Restart timestamps are audit context. Check the identity, image, ports and
 # running state so independent restarts do not masquerade as app changes.
-fields=("id","image","ports","running")
+auxiliary="218b4c593e3c238dfbb329e003cde89b95797db864d1bc51e85317e99db15048"
+fields=("id","name","image","bindings","networkMode")
 def normalize(path):
     rows=json.loads(Path(path).read_text())
-    return {row["id"]:{field:row[field] for field in fields} for row in rows}
+    saved={}
+    for row in rows:
+        item={field:row[field] for field in fields}
+        if row["id"]==auxiliary:
+            if not row["name"].endswith("prisma-studio") or row["bindings"] or row["networkMode"]=="host":
+                raise SystemExit("The diagnosed auxiliary container no longer matches its private configuration.")
+            # This specific private tool restarts independently. Its runtime
+            # remains in the audit, while its identity/image/networking stay guarded.
+        else:
+            item["ports"]=row["ports"] or {}
+            item["running"]=row["running"]
+        saved[row["id"]]=item
+    return saved
 before=normalize(sys.argv[1])
 after=normalize(sys.argv[2])
 if before!=after:
     for identifier in sorted(set(before)|set(after)):
         if before.get(identifier)!=after.get(identifier):
             print("Unrelated container changed:",identifier[:12],file=sys.stderr)
-    raise SystemExit("Another container was added, removed, changed image/ports, or changed running state.")
+    raise SystemExit("Another container changed identity/image/networking, or a protected app changed running state.")
 PY
 }
 sas_feed_check() {
@@ -177,7 +191,10 @@ trap 'exit 129' HUP
 [ "$(git rev-parse HEAD)" = "$sas_old_source" ] || sas_fail "The live SAS source differs from the checked release."
 [ "$(git branch --show-current)" = "$sas_old_branch" ] || sas_fail "The live SAS branch differs from the checked branch."
 git diff --quiet && git diff --cached --quiet || sas_fail "The live SAS checkout has tracked changes."
-if git show-ref --verify --quiet "refs/heads/$sas_release"; then sas_fail "The supplier release branch already exists; inspect its deployment status before retrying."; fi
+if git show-ref --verify --quiet "refs/heads/$sas_release"; then
+    [ "$(git rev-parse "$sas_release")" = "$sas_target" ] || sas_fail "The existing release branch differs from the validated candidate."
+    sas_release_exists=1
+fi
 [ "$(git -C "$sas_checkout" rev-parse HEAD)" = "$sas_target" ] || sas_fail "The validation source is not the checked candidate."
 git -C "$sas_checkout" diff --quiet && git -C "$sas_checkout" diff --cached --quiet || sas_fail "The validation checkout has tracked changes."
 [ -f /etc/ccsas/app.env ] && [ ! -L /etc/ccsas/app.env ] || sas_fail "Expected the protected environment file."
@@ -244,6 +261,36 @@ image=json.loads(subprocess.check_output(["docker","image","inspect",sys.argv[1]
 data=int(subprocess.check_output(["du","--summarize","--block-size=1","/var/lib/ccsas"],text=True).split()[0])
 if shutil.disk_usage("/root").free < image["Size"]*2+data*2+1024**3:
     raise SystemExit("Insufficient free space for the fresh rollback backup.")
+PY
+
+# Confirm the prior mismatch was only runtime data for the diagnosed private tool.
+python3 - <<'PY'
+from pathlib import Path
+import json,subprocess
+auxiliary="218b4c593e3c238dfbb329e003cde89b95797db864d1bc51e85317e99db15048"
+reports=[p for p in Path("/root/ccsas-backups").glob("supplier-deploy-20261019-*")
+         if (p/"other-containers-before.json").is_file() and (p/"other-containers-after.json").is_file()
+         and (p/"deploy-status.txt").is_file() and (p/"deploy-status.txt").read_text().strip()=="ROLLED_BACK"]
+if not reports: raise SystemExit("The prior rollback comparison must be inspected before this retry.")
+report=max(reports,key=lambda p:p.stat().st_mtime)
+before={r["id"]:r for r in json.loads((report/"other-containers-before.json").read_text())}
+after={r["id"]:r for r in json.loads((report/"other-containers-after.json").read_text())}
+if set(before)!=set(after): raise SystemExit("The prior attempt had unrelated container additions/removals.")
+changed=[identifier for identifier in before if before[identifier]!=after[identifier]]
+if changed!=[auxiliary]: raise SystemExit("The prior mismatch was not limited to the diagnosed auxiliary tool.")
+left,right=before[auxiliary],after[auxiliary]
+fields={field for field in set(left)|set(right) if left.get(field)!=right.get(field)}
+if not fields <= {"running","started","ports"}:
+    raise SystemExit("The auxiliary image or configuration changed; inspect it.")
+if any(value for ports in (left.get("ports"),right.get("ports")) for value in (ports or {}).values()):
+    raise SystemExit("The auxiliary tool had published ports; inspect it.")
+live=json.loads(subprocess.check_output(["docker","inspect",auxiliary],text=True))[0]
+if not live["Name"].endswith("prisma-studio") or live["HostConfig"].get("PortBindings") or live["HostConfig"]["NetworkMode"]=="host":
+    raise SystemExit("The auxiliary tool is no longer the checked private Prisma Studio container.")
+if live["Image"]!=left["image"]:
+    raise SystemExit("The auxiliary image changed after the previous attempt.")
+print("Previous mismatch confirmed as private Prisma Studio runtime fields:",",".join(sorted(fields))+".")
+print("Auxiliary runtime status:",live["State"]["Status"]+"; restart count:",str(live["RestartCount"])+". Configuration remains guarded.")
 PY
 
 sas_backup=$(mktemp -d /root/ccsas-backups/supplier-deploy-20261019-XXXXXX)
@@ -337,7 +384,12 @@ sas_compare_containers "$sas_backup/other-containers-before.json" "$sas_backup/o
 printf '%s\n' "Fresh backup verified; switching only the SAS app."
 printf '%s\n' RELEASING > "$sas_backup/deploy-status.txt"
 sas_changed=1
-git -c core.hooksPath=/dev/null switch -c "$sas_release" "$sas_target"
+if [ "$sas_release_exists" -eq 1 ]; then
+    [ "$(git rev-parse "$sas_release")" = "$sas_target" ] || sas_fail "The release branch changed during backup."
+    git -c core.hooksPath=/dev/null switch "$sas_release"
+else
+    git -c core.hooksPath=/dev/null switch -c "$sas_release" "$sas_target"
+fi
 docker image tag "$sas_candidate_id" "$sas_live_tag"
 sas_compose up --detach --no-deps --no-build --pull never --force-recreate app
 sas_wait
