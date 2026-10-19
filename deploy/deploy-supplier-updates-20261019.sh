@@ -6,6 +6,7 @@ readonly sas_root=/opt/ccsas
 readonly sas_checkout=/opt/ccsas-validation-20261019
 readonly sas_compose_file=/opt/ccsas/deploy/compose.yaml
 readonly sas_database=/var/lib/ccsas/ccsas.sqlite
+readonly sas_feed_probe=/root/ccsas-check-supplier-feed-images-20261019.py
 readonly sas_old_source=4e8849100727b73b89f53a065990e04bd37f4e6e
 readonly sas_old_branch=feature/complimentary-supplier-access
 readonly sas_target=ce84680c59140d45ca018208c1bde0c8f6e0c2bd
@@ -59,41 +60,7 @@ print(json.dumps(sorted(saved,key=lambda row:row["id"]),sort_keys=True,separator
 PY
 }
 sas_feed_check() {
-    sas_compose exec -T app node --input-type=module - "$1" <<'JS'
-import assert from "node:assert/strict";
-import {DatabaseSync} from "node:sqlite";
-const phase=process.argv[2],key=process.env.SAS_CCON_APP_KEY;
-assert.ok(key,"The configured CCON connection key is unavailable.");
-const db=new DatabaseSync("/data/ccsas.sqlite",{readOnly:true});
-let state;
-try {state=JSON.parse(db.prepare("SELECT data FROM sas_networks WHERE id=?").get("main").data);}
-finally {db.close();}
-const hubs=[...new Set(state.campaigns.filter(c=>!c.sample&&c.hubId).map(c=>c.hubId))].sort();
-const scopes=[{placement:"Dashboard ticker",hub:""}];
-for(const hub of hubs)for(const placement of ["Resource hub ticker","Resource hub static"])scopes.push({placement,hub});
-const checked=[];
-for(const country of ["CA","US"])for(const scope of scopes){
-    const url=new URL("http://127.0.0.1:3100/api/feed");
-    for(const [name,value] of Object.entries({app:"owners",audience:"owner",country,...scope}))if(value)url.searchParams.set(name,value);
-    const response=await fetch(url,{headers:{"X-SAS-App-Key":key,Host:"childcaresas.com"},signal:AbortSignal.timeout(10000)});
-    assert.equal(response.status,200,"CCON feed HTTP "+response.status);
-    const data=await response.json();
-    assert.ok(Array.isArray(data.ads),"The CCON feed did not contain an ad list.");
-    if(phase==="after"){
-        assert.equal(data.settings.maxCopy,100);
-        assert.equal(data.settings.maxSupplierName,40);
-        for(const ad of data.ads){
-            assert.equal(typeof ad.text,"string");
-            assert.ok(Array.from(ad.text).length<=100);
-            assert.equal(typeof ad.supplier,"string");
-            assert.ok(Array.from(ad.supplier).length<=40);
-            assert.ok(!Object.hasOwn(ad,"name"),"An internal campaign title was exposed.");
-        }
-    }
-    checked.push({country,...scope,ids:data.ads.map(ad=>ad.id).sort()});
-}
-console.log(JSON.stringify(checked));
-JS
+    python3 "$sas_feed_probe" "$sas_backup/ccsas.sqlite" "$sas_previous_image" "$sas_candidate_id" "$sas_backup/feed-image-validation"
 }
 sas_public_check() {
     local sas_phase="$1" sas_currency sas_status
@@ -105,6 +72,10 @@ sas_public_check() {
         -H 'Host: childcaresas.com' --output /dev/null --write-out '%{http_code}' \
         http://127.0.0.1:3100/api/state) || return 1
     [ "$sas_status" = 401 ] || sas_fail "The owner API did not retain its sign-in requirement."
+    sas_status=$(curl --silent --show-error --connect-timeout 5 --max-time 10 \
+        -H 'Host: childcaresas.com' --output /dev/null --write-out '%{http_code}' \
+        'http://127.0.0.1:3100/api/feed?app=owners') || return 1
+    [ "$sas_status" = 401 ] || sas_fail "The live feed did not retain its connection-key requirement."
 }
 sas_restore() {
     local sas_restore_dir="$1" sas_restore_image sas_current_source sas_current_branch sas_current_container
@@ -231,8 +202,9 @@ sas_previous_image=$(docker inspect --format '{{.Image}}' "$sas_container")
 [ "$(docker inspect --format '{{.State.Running}}' "$sas_container")" = true ]
 [ "$(docker image inspect "$sas_live_tag" --format '{{.Id}}')" = "$sas_previous_image" ] || sas_fail "The live image tag no longer matches the running release."
 
+[ -f "$sas_feed_probe" ] && [ ! -L "$sas_feed_probe" ] || sas_fail "The reviewed private feed checker is missing."
 # Parse every embedded script before creating backups or changing a release.
-python3 - "$0" <<'PY'
+python3 - "$0" "$sas_feed_probe" <<'PY'
 import ast,re,subprocess,sys
 from pathlib import Path
 code=Path(sys.argv[1]).read_text()
@@ -240,6 +212,10 @@ for body in re.findall(r"<<'PY'\n(.*?)\nPY(?:\n|$)",code,re.S):
     ast.parse(body,filename="embedded-deployment-check.py")
 for body in re.findall(r"<<'JS'\n(.*?)\nJS(?:\n|$)",code,re.S):
     subprocess.run(["docker","compose","-f","/opt/ccsas/deploy/compose.yaml","exec","-T","app","node","--input-type=module","--check"],input=body,text=True,check=True)
+probe=ast.parse(Path(sys.argv[2]).read_text(),filename="private-feed-check.py")
+programs=[node.value.value for node in probe.body if isinstance(node,ast.Assign) and any(isinstance(target,ast.Name) and target.id=="JS_BODY" for target in node.targets) and isinstance(node.value,ast.Constant) and isinstance(node.value.value,str)]
+if len(programs)!=1: raise SystemExit("Expected the reviewed feed-check JavaScript program.")
+subprocess.run(["docker","compose","-f","/opt/ccsas/deploy/compose.yaml","exec","-T","app","node","--input-type=module","--check"],input=programs[0],text=True,check=True)
 print("Deployment script syntax checks passed.")
 PY
 
@@ -264,6 +240,7 @@ cp -p /etc/ccsas/app.env "$sas_backup/app.env"
 cp -p "$sas_compose_file" "$sas_backup/compose.yaml"
 cp -p "$(git rev-parse --git-path config)" "$sas_backup/git-config"
 cp -- "$0" "$sas_backup/deploy-script.sh"
+cp -- "$sas_feed_probe" "$sas_backup/feed-check-script.py"
 chmod 700 "$sas_backup/deploy-script.sh"
 sha256sum /etc/ccsas/app.env > "$sas_backup/settings.sha256"
 sha256sum "$sas_compose_file" > "$sas_backup/compose.sha256"
@@ -308,16 +285,17 @@ PY
 sas_fingerprint "$sas_backup/ccsas.sqlite" > "$sas_backup/protected-before.sha256"
 sas_other_containers > "$sas_backup/other-containers-before.json"
 sas_public_check before
-sas_feed_check before > "$sas_backup/feeds-before.json"
+sas_feed_check
 docker image tag "$sas_previous_image" "$sas_rollback_tag"
 docker image save --output "$sas_backup/previous-image.tar" "$sas_rollback_tag"
 tar --list --file "$sas_backup/previous-image.tar" >/dev/null
 (
     cd "$sas_backup"
-    sha256sum app.env compose.yaml git-config deploy-script.sh settings.sha256 compose.sha256 \
+    sha256sum app.env compose.yaml git-config deploy-script.sh feed-check-script.py settings.sha256 compose.sha256 \
         source.tar.gz repository.bundle data-files.tar.gz ccsas.sqlite previous-image.tar \
         old-source.txt old-branch.txt old-image.txt old-tag.txt rollback-tag.txt protected-before.sha256 \
-        other-containers-before.json catalog-before-CAD.json catalog-before-USD.json feeds-before.json > backup.sha256
+        other-containers-before.json catalog-before-CAD.json catalog-before-USD.json \
+        feed-image-validation/original.json feed-image-validation/candidate.json > backup.sha256
     sha256sum --check --status backup.sha256
 )
 touch "$sas_backup/BACKUP_READY"
@@ -348,7 +326,6 @@ sas_new_container=$(sas_compose ps --quiet app)
 [ -n "$sas_new_container" ]
 [ "$(docker inspect --format '{{.Image}} {{.State.Running}}' "$sas_new_container")" = "$sas_candidate_id true" ]
 sas_public_check after
-sas_feed_check after > "$sas_backup/feeds-after.json"
 
 python3 - "$sas_backup" <<'PY'
 from pathlib import Path
@@ -359,8 +336,8 @@ for currency in ("CAD","USD"):
     after=json.loads((path/("catalog-after-"+currency+".json")).read_text())
     if before!=after or after.get("packageStructure")!="shared-sas":
         raise SystemExit("The public package catalog changed unexpectedly.")
-if json.loads((path/"feeds-before.json").read_text())!=json.loads((path/"feeds-after.json").read_text()):
-    raise SystemExit("CCON feed membership changed unexpectedly during deployment.")
+if json.loads((path/"feed-image-validation/original.json").read_text())!=json.loads((path/"feed-image-validation/candidate.json").read_text()):
+    raise SystemExit("CCON feed membership differed in the private image checks.")
 PY
 
 sha256sum --check --status "$sas_backup/settings.sha256"
@@ -376,6 +353,7 @@ printf '%s\n' "$sas_candidate_id" > "$sas_backup/deployed-image.txt"
 printf '%s\n' DEPLOYED > "$sas_backup/deploy-status.txt"
 sas_changed=0
 printf '%s\n' "SAS deployment succeeded. The 100-character ad limit and Supplier Services notifications are live."
-printf '%s\n' "Settings, supplier and financial records, CAD/USD catalogs, CCON ad membership and other containers verified."
+printf '%s\n' "Settings, supplier and financial records, CAD/USD catalogs, feed authentication and other containers verified. Private image checks retained CCON ad membership."
+printf '%s\n' "Refresh CCON to verify delivery through its existing connection key."
 printf 'Commit: %s\nImage: %s\nBackup: %s\n' "$sas_target" "$sas_candidate_id" "$sas_backup"
 printf 'Rollback: %s\n' "$(cat "$sas_backup/rollback-command.txt")"
