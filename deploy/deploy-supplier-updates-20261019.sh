@@ -59,6 +59,25 @@ for row in rows:
 print(json.dumps(sorted(saved,key=lambda row:row["id"]),sort_keys=True,separators=(",",":")))
 PY
 }
+sas_compare_containers() {
+    python3 - "$1" "$2" <<'PY'
+from pathlib import Path
+import json,sys
+# Restart timestamps are audit context. Check the identity, image, ports and
+# running state so independent restarts do not masquerade as app changes.
+fields=("id","image","ports","running")
+def normalize(path):
+    rows=json.loads(Path(path).read_text())
+    return {row["id"]:{field:row[field] for field in fields} for row in rows}
+before=normalize(sys.argv[1])
+after=normalize(sys.argv[2])
+if before!=after:
+    for identifier in sorted(set(before)|set(after)):
+        if before.get(identifier)!=after.get(identifier):
+            print("Unrelated container changed:",identifier[:12],file=sys.stderr)
+    raise SystemExit("Another container was added, removed, changed image/ports, or changed running state.")
+PY
+}
 sas_feed_check() {
     python3 "$sas_feed_probe" "$sas_backup/ccsas.sqlite" "$sas_previous_image" "$sas_candidate_id" "$sas_backup/feed-image-validation"
 }
@@ -313,7 +332,7 @@ sha256sum --check --status "$sas_backup/compose.sha256"
 sas_fingerprint "$sas_database" > "$sas_backup/protected-current.sha256"
 cmp --silent "$sas_backup/protected-before.sha256" "$sas_backup/protected-current.sha256"
 sas_other_containers > "$sas_backup/other-containers-current.json"
-cmp --silent "$sas_backup/other-containers-before.json" "$sas_backup/other-containers-current.json"
+sas_compare_containers "$sas_backup/other-containers-before.json" "$sas_backup/other-containers-current.json"
 
 printf '%s\n' "Fresh backup verified; switching only the SAS app."
 printf '%s\n' RELEASING > "$sas_backup/deploy-status.txt"
@@ -345,7 +364,7 @@ sha256sum --check --status "$sas_backup/compose.sha256"
 sas_fingerprint "$sas_database" > "$sas_backup/protected-after.sha256"
 cmp --silent "$sas_backup/protected-before.sha256" "$sas_backup/protected-after.sha256"
 sas_other_containers > "$sas_backup/other-containers-after.json"
-cmp --silent "$sas_backup/other-containers-before.json" "$sas_backup/other-containers-after.json"
+sas_compare_containers "$sas_backup/other-containers-before.json" "$sas_backup/other-containers-after.json"
 [ "$(git rev-parse HEAD)" = "$sas_target" ] && [ "$(git branch --show-current)" = "$sas_release" ] || sas_fail "The deployed source differs from the candidate."
 git diff --quiet && git diff --cached --quiet || sas_fail "The deployed checkout has tracked changes."
 printf '%s\n' "$sas_target" > "$sas_backup/deployed-commit.txt"
