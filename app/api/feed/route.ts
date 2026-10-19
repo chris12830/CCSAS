@@ -1,4 +1,5 @@
 import {getChatGPTUser} from "../../chatgpt-auth";
+import {AD_MESSAGE_LIMIT,SUPPLIER_AD_NAME_LIMIT} from "../../../lib/supplier-advertising.mjs";
 import {network,hashKey,database} from "../../../lib/sas-db";
 import {eligibleAds,deliveryAd,type Country,type Audience} from "../../../lib/sas-model";
 export async function GET(request:Request){try{
@@ -11,5 +12,5 @@ export async function GET(request:Request){try{
   const audience=q.get("audience")??"owner";if(!['owner','admin','staff'].includes(audience))return Response.json({error:"Invalid audience."},{status:400});
   const ads=eligibleAds(row.state,{appId:app.id,country:country as Country|undefined,audience:audience as Audience,placement:q.get("placement")??undefined,region:q.get("region")??undefined,hubId:q.get("hub")??undefined,preview}).map(c=>deliveryAd(c,row.state));
   if(!preview)await database().prepare("INSERT INTO sas_connections (app_id,last_seen) VALUES (?,?) ON CONFLICT(app_id) DO UPDATE SET last_seen=excluded.last_seen").bind(app.id,new Date().toISOString()).run();
-  return Response.json({app:app.id,ads,settings:{speed:row.state.settings.speed,maxCopy:row.state.settings.maxCopy},preview},{headers:{"Cache-Control":"no-store"}});
+  return Response.json({app:app.id,ads,settings:{speed:row.state.settings.speed,maxCopy:AD_MESSAGE_LIMIT,maxSupplierName:SUPPLIER_AD_NAME_LIMIT},preview},{headers:{"Cache-Control":"no-store"}});
 }catch(error){console.error("SAS feed",error);return Response.json({ads:[],error:"Advertising temporarily unavailable."},{status:503});}}
