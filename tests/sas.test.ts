@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {initialNetwork,eligibleAds,today,publicState,Network} from "../lib/sas-model";
+import {initialNetwork,eligibleAds,deliveryAd,today,publicState,Network} from "../lib/sas-model";
 import {applyAction} from "../lib/sas-actions";
 const owner={userId:"owner",email:"owner@example.test",owner:true};
 const supplierActor={userId:"supplier-a",email:"supplier-a@example.test",owner:false};
@@ -176,4 +176,71 @@ test("routine network settings retain the published supplier criteria and their 
  const before=structuredClone(state.settings.supplierCriteria);
  const next=applyAction(state,"save_settings",{...state.settings,showSamples:false},owner);
  assert.deepEqual(next.settings.supplierCriteria,before);assert.equal(next.settings.showSamples,false);
+});
+
+test("all shared packages accept 100 message characters and reject 101 without changing saved copy",()=>{
+ for(const packageId of ["single","bundle","network"]){
+  const state=realNetwork(),campaign=state.campaigns[0];state.suppliers[0].packageId=packageId;
+  const input={...campaign,appIds:["owners"],text:"A".repeat(100),submit:false};
+  const next=applyAction(state,"save_campaign",input,owner);
+  assert.equal(next.campaigns[0].text,input.text);assert.equal(next.campaigns[0].status,"draft");
+  assert.throws(()=>applyAction(next,"save_campaign",{...input,text:"A".repeat(101)},owner),/100 characters/);
+  assert.equal(next.campaigns[0].text,input.text);assert.equal(state.campaigns[0].text,campaign.text);
+ }
+});
+
+test("message limits count Unicode characters and include spaces and punctuation",()=>{
+ const state=realNetwork(),input={...state.campaigns[0],appIds:["owners"],text:"😀".repeat(100),submit:false};
+ assert.equal(applyAction(state,"save_campaign",input,owner).campaigns[0].text,input.text);
+ assert.throws(()=>applyAction(state,"save_campaign",{...input,text:"😀".repeat(101)},owner),/100 characters/);
+ const copy="Save ".repeat(19)+"$20!!";
+ assert.equal(copy.length,100);
+ assert.equal(applyAction(state,"save_campaign",{...input,text:copy},owner).campaigns[0].text,copy);
+ assert.throws(()=>applyAction(state,"save_campaign",{...input,text:copy+"!"},owner),/100 characters/);
+});
+
+test("preserved CCON contracts use the same message limit without changing contract prices",()=>{
+ const state=realNetwork(),contract={...state.packages[0],id:"legacy-copy",sourceAppId:"owners",sourceCurrency:"CAD" as const,campaignRates:{configured:true,ticker:0,premium:0,premiumFree:false,hubTicker:0,hubStatic:0}};
+ state.packages.push(contract);state.apps[0].packages.push(contract.id);state.suppliers[0].packageId=contract.id;state.settings.maxCopy=500;
+ const input={...state.campaigns[0],appIds:["owners"],text:"A".repeat(100),submit:false};
+ const next=applyAction(state,"save_campaign",input,owner);
+ assert.equal(next.campaigns[0].text,input.text);assert.deepEqual(next.packages,state.packages);
+ assert.throws(()=>applyAction(state,"save_campaign",{...input,text:"A".repeat(101)},owner),/100 characters/);
+});
+
+test("a separate supplier advertising name accepts 40 characters while preserving the business name",()=>{
+ const state=realNetwork(),supplier=state.suppliers[0],advertisingName="é".repeat(40);
+ const next=applyAction(state,"save_supplier",{...supplier,advertisingName,accepted:true},owner);
+ assert.equal(next.suppliers[0].name,supplier.name);assert.equal(next.suppliers[0].advertisingName,advertisingName);
+ assert.equal(deliveryAd(next.campaigns[0],next).supplier,advertisingName);
+ assert.throws(()=>applyAction(next,"save_supplier",{...next.suppliers[0],advertisingName:"é".repeat(41),accepted:true},owner),/40 characters/);
+ assert.equal(next.suppliers[0].advertisingName,advertisingName);
+});
+
+test("public ads omit internal campaign titles and bound legacy business names without altering records",()=>{
+ const state=realNetwork();state.suppliers[0].name="é".repeat(41);
+ const campaign=state.campaigns[0],before=structuredClone(state),ad=deliveryAd(campaign,state);
+ assert.equal(ad.supplier,"é".repeat(39)+"…");assert.equal(Object.hasOwn(ad,"name"),false);
+ assert.equal(ad.id,campaign.id);assert.equal(ad.text,campaign.text);assert.equal(ad.url,campaign.url);
+ assert.equal(ad.country,campaign.country);assert.equal(ad.currency,campaign.currency);
+ assert.deepEqual(state,before);
+});
+
+test("overlong stored ads stop delivery until shortened and reviewed without truncating their saved text",()=>{
+ const state=realNetwork(),campaign=state.campaigns[0];campaign.text="A".repeat(101);state.settings.maxCopy=500;
+ assert.equal(eligibleAds(state,{appId:"owners"}).some(ad=>ad.id===campaign.id),false);
+ assert.throws(()=>applyAction(state,"campaign_status",{id:campaign.id,status:"published"},owner),/copy limit/);
+ assert.equal(campaign.text,"A".repeat(101));assert.equal(campaign.status,"published");
+ let next=applyAction(state,"save_campaign",{...campaign,text:"A".repeat(100),submit:true},owner);
+ assert.equal(eligibleAds(next,{appId:"owners"}).some(ad=>ad.id===campaign.id),false);
+ next=applyAction(next,"campaign_status",{id:campaign.id,status:"published"},owner);
+ assert.equal(eligibleAds(next,{appId:"owners"}).some(ad=>ad.id===campaign.id),true);
+});
+
+test("network settings cannot raise the shared copy limit and report 100 for preserved settings",()=>{
+ const state=realNetwork();state.settings.maxCopy=500;
+ assert.equal(publicState(state).settings.maxCopy,100);assert.equal(state.settings.maxCopy,500);
+ assert.throws(()=>applyAction(state,"save_settings",{...state.settings,maxCopy:101},owner));
+ const next=applyAction(state,"save_settings",{...state.settings,maxCopy:100},owner);
+ assert.equal(next.settings.maxCopy,100);
 });

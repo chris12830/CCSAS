@@ -206,3 +206,50 @@ test("owner-created shared records cannot bypass verification through either app
  assert.equal((await mutate(owner,"supplier.review",{supplierId:id,decision:"approved",reason:""})).status,409);
  assert.equal((await request(applicant,"supplier")).data.state.suppliers[0].status,"pending");
 });
+
+test("supplier campaign API enforces the Unicode message boundary without partial writes",async()=>{
+ const applicant={id:"copy-policy-supplier",email:"copy-policy@example.test"},current=(await request(owner,"state")).data.state;
+ const created=await mutate(applicant,"save_supplier",applicationInput(current));assert.equal(created.status,200);
+ const company=created.data.state.suppliers[0],input={supplierId:company.id,name:"Internal campaign title",text:"😀".repeat(100),url:"https://example.test/offer",country:"CA",currency:"CAD",appIds:["owners"],placement:"Dashboard ticker",region:"",start:"2026-10-19",end:"2099-12-31",submit:false};
+ const saved=await mutate(applicant,"save_campaign",input);assert.equal(saved.status,200);
+ const campaign=saved.data.state.campaigns[0];assert.equal(campaign.text,input.text);assert.equal(campaign.name,input.name);
+ const before=await request(owner,"state");
+ const rejected=await mutate(applicant,"save_campaign",{...input,id:campaign.id,text:"😀".repeat(101),submit:true});
+ assert.equal(rejected.status,400);assert.match(rejected.data.error,/100 characters/);
+ const after=await request(owner,"state");assert.equal(after.data.version,before.data.version);
+ assert.deepEqual(after.data.state.campaigns.find(c=>c.id===campaign.id),before.data.state.campaigns.find(c=>c.id===campaign.id));
+ assert.deepEqual(after.data.workspace,before.data.workspace);
+});
+
+test("supplier profile API keeps advertising names separate and rejects names over 40 characters atomically",async()=>{
+ const applicant={id:"ad-name-supplier",email:"ad-name@example.test"},current=(await request(owner,"state")).data.state;
+ const input={...applicationInput(current),name:"Registered Supplier Business",advertisingName:"é".repeat(40)};
+ const created=await mutate(applicant,"save_supplier",input);assert.equal(created.status,200);
+ const company=created.data.state.suppliers[0];assert.equal(company.name,input.name);assert.equal(company.advertisingName,input.advertisingName);
+ const before=await request(owner,"state");
+ const rejected=await mutate(applicant,"save_supplier",{...input,id:company.id,advertisingName:"é".repeat(41)});
+ assert.equal(rejected.status,400);assert.match(rejected.data.error,/40 characters/);
+ const after=await request(owner,"state");assert.equal(after.data.version,before.data.version);
+ assert.deepEqual(after.data.state.suppliers.find(s=>s.id===company.id),before.data.state.suppliers.find(s=>s.id===company.id));
+ assert.deepEqual(after.data.workspace,before.data.workspace);
+});
+
+test("supplier notification API scopes updates and keeps read status separate from email delivery",async()=>{
+ const applicant={id:"notification-supplier",email:"notification-supplier@example.test"},otherApplicant={id:"notification-other",email:"notification-other@example.test"},state=(await request(owner,"state")).data.state;
+ const created=await mutate(applicant,"save_supplier",applicationInput(state));assert.equal(created.status,200);const id=created.data.state.suppliers[0].id;
+ const otherCreated=await mutate(otherApplicant,"save_supplier",applicationInput(state));assert.equal(otherCreated.status,200);const otherId=otherCreated.data.state.suppliers[0].id;
+ assert.equal((await mutate(owner,"supplier.review",{supplierId:id,decision:"more_info_requested",reason:"Confirm the service provinces.",dueAt:"2080-01-01"})).status,200);
+ assert.equal((await mutate(owner,"supplier.review",{supplierId:otherId,decision:"more_info_requested",reason:"Private update for the other supplier.",dueAt:"2080-01-01"})).status,200);
+ const inbox=await request(applicant,"supplier"),notice=inbox.data.workspace.notices[0],otherNotice=(await request(otherApplicant,"supplier")).data.workspace.notices[0];
+ assert.equal(notice.supplierId,id);assert.equal(notice.readAt,"");assert.equal(JSON.stringify(inbox.data).includes("Private update for the other supplier."),false);
+ const before=await request(owner,"state");
+ assert.equal((await mutate(otherApplicant,"supplier.read_notifications",{supplierId:id,notificationIds:[notice.id]})).status,403);
+ assert.equal((await mutate(owner,"supplier.read_notifications",{supplierId:id,notificationIds:[notice.id]})).status,403);
+ assert.equal((await mutate(applicant,"supplier.read_notifications",{supplierId:id,notificationIds:[notice.id,otherNotice.id]})).status,404);
+ assert.equal((await request(owner,"state")).data.version,before.data.version);
+ const read=await mutate(applicant,"supplier.read_notifications",{supplierId:id,notificationIds:[notice.id]});assert.equal(read.status,200);
+ assert.ok(read.data.workspace.notices.find(n=>n.id===notice.id).readAt);
+ const reloaded=await request(applicant,"supplier"),saved=reloaded.data.workspace.notices.find(n=>n.id===notice.id);
+ assert.equal(saved.readAt,read.data.workspace.notices.find(n=>n.id===notice.id).readAt);assert.equal(saved.status,"queued");assert.equal(saved.sentAt,undefined);
+ const foreign=(await request(otherApplicant,"supplier")).data.workspace.notices.find(n=>n.id===otherNotice.id);assert.equal(foreign.readAt,"");assert.equal(foreign.status,"queued");
+});

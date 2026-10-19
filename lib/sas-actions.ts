@@ -1,4 +1,5 @@
 import {campaignPurchaseQuote} from "./supplier-catalog.mjs";
+import {AD_MESSAGE_LIMIT,SUPPLIER_AD_NAME_LIMIT,adCharacterCount} from "./supplier-advertising.mjs";
 import {isSharedPackage,selectableSupplierPackages,supplierApprovalError} from "./supplier-packages.mjs";
 import type {Workspace} from "./supplier-workflows.mjs";
 import {z} from "zod";
@@ -9,8 +10,8 @@ const countries=z.array(z.enum(["CA","US"])).min(1).max(2);
 const url=z.string().trim().max(1000).refine(v=>{try{return ["http:","https:"].includes(new URL(v).protocol)}catch{return false}},"Enter a complete http or https website address.");
 const optionalUrl=z.union([url,z.literal("")]);
 const date=z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(v=>!Number.isNaN(Date.parse(v))&&new Date(v).toISOString().slice(0,10)===v,"Enter a valid date.");
-const supplierSchema=z.object({id:id.optional(),name,contact:name,email:z.string().trim().email().max(200),website:optionalUrl,category:z.string().trim().min(1).max(100),countries,packageId:id,currency:z.enum(["CAD","USD"]),accepted:z.boolean(),policyVersion:z.string().optional(),policyText:z.string().optional(),sample:z.boolean().optional()});
-const campaignSchema=z.object({id:id.optional(),supplierId:id,name,text:z.string().trim().min(5).max(500),url,country:z.enum(["CA","US"]),currency:z.enum(["CAD","USD"]),appIds:z.array(id).min(1),placement:z.string().refine(v=>placements.includes(v)),region:z.string().trim().max(80),hubId:z.string().max(100).optional(),tickerSpeed:z.enum(["normal","premium"]).optional(),start:date,end:date,submit:z.boolean()});
+const supplierSchema=z.object({id:id.optional(),name,advertisingName:z.string().trim().refine(v=>adCharacterCount(v)<=SUPPLIER_AD_NAME_LIMIT,"Supplier names in ads are limited to 40 characters.").optional(),contact:name,email:z.string().trim().email().max(200),website:optionalUrl,category:z.string().trim().min(1).max(100),countries,packageId:id,currency:z.enum(["CAD","USD"]),accepted:z.boolean(),policyVersion:z.string().optional(),policyText:z.string().optional(),sample:z.boolean().optional()});
+const campaignSchema=z.object({id:id.optional(),supplierId:id,name,text:z.string().trim().min(5).refine(v=>adCharacterCount(v)<=AD_MESSAGE_LIMIT,"Ad copy is limited to 100 characters, including spaces and punctuation."),url,country:z.enum(["CA","US"]),currency:z.enum(["CAD","USD"]),appIds:z.array(id).min(1),placement:z.string().refine(v=>placements.includes(v)),region:z.string().trim().max(80),hubId:z.string().max(100).optional(),tickerSpeed:z.enum(["normal","premium"]).optional(),start:date,end:date,submit:z.boolean()});
 export type Actor={userId:string;email:string;owner:boolean};
 export function applyAction(previous:Network, action:string, input:unknown, actor:Actor,workspace?:Workspace):Network{
   const state=structuredClone(previous),now=new Date().toISOString();
@@ -46,7 +47,7 @@ export function applyAction(previous:Network, action:string, input:unknown, acto
       if(selectedPackage.supplierId&&selectedPackage.supplierId!==existing?.id)throw new Error("This preserved contract belongs to another supplier.");
       if(!selectableSupplierPackages(state.packages,existing?.packageId).some(p=>p.id===v.packageId))throw new Error("Choose a shared SAS package. Existing CCON contracts are retained for their current suppliers.");
       const changedPackage=existing&&(existing.packageId!==v.packageId||existing.currency!==v.currency);
-      const next:Supplier={...existing,id:v.id??crypto.randomUUID(),name:v.name,contact:v.contact,email,website:v.website,category:v.category,countries:v.countries,packageId:v.packageId,currency:v.currency,
+      const next:Supplier={...existing,id:v.id??crypto.randomUUID(),name:v.name,advertisingName:v.advertisingName??existing?.advertisingName,contact:v.contact,email,website:v.website,category:v.category,countries:v.countries,packageId:v.packageId,currency:v.currency,
         status:existing?.status??"pending",applicationRequired:existing?.applicationRequired??(!existing&&!(actor.owner&&v.sample===true)),billingStatus:changedPackage?"unpaid":existing?.billingStatus??"unpaid",paidUntil:changedPackage?"":existing?.paidUntil??"",sample:existing?.sample??(actor.owner&&v.sample===true),userId:existing?.userId??(!actor.owner?actor.userId:undefined),policyAcceptedAt:actor.owner?(existing?.policyAcceptedAt??""):(existing?.policyVersion===state.settings.policyVersion?existing.policyAcceptedAt:now),policyVersion:actor.owner?(existing?.policyVersion??""):state.settings.policyVersion,policyText:actor.owner?(existing?.policyText??""):state.settings.policy,createdAt:existing?.createdAt??now};
       if(existing)state.suppliers=state.suppliers.map(s=>s.id===next.id?next:s);else state.suppliers.push(next);
       message=`${next.name} supplier application ${existing?"updated":"received"}.`;break;
@@ -98,7 +99,6 @@ export function applyAction(previous:Network, action:string, input:unknown, acto
       if(existing&&existing.supplierId!==s.id)throw new Error("A campaign's supplier cannot be changed.");
       if(!actor.owner&&(s.userId?s.userId!==actor.userId:s.email.toLowerCase()!==actor.email.toLowerCase()))throw new Error("You cannot create campaigns for another supplier.");
       if(s.status==="suspended"||s.status==="rejected"||(s.accountStatus??"active")!=="active")throw new Error("This supplier account cannot submit campaigns.");
-      const copyLimit=p.sourceAppId==="owners"?500:state.settings.maxCopy;if(v.text.length>copyLimit)throw new Error(`Ad copy is limited to ${copyLimit} characters.`);
       if(!s.countries.includes(v.country))throw new Error("This supplier does not serve the selected country.");
       if(p.sourceAppId==="owners"?v.currency!==p.sourceCurrency:((v.country==="CA"&&v.currency!=="CAD")||(v.country==="US"&&v.currency!=="USD")))throw new Error("Use CAD for Canada and USD for USA offers.");
       if(v.end<v.start)throw new Error("The campaign end date must follow its start date.");
@@ -117,7 +117,7 @@ export function applyAction(previous:Network, action:string, input:unknown, acto
     case "campaign_status":{
       const v=z.object({id,status:z.enum(["published","paused","rejected","review"])}).parse(input),c=state.campaigns.find(c=>c.id===v.id),s=state.suppliers.find(s=>s.id===c?.supplierId);
       if(!c||!s)throw new Error("Campaign not found.");
-      if(v.status==="published"&&(s.status!=="approved"||c.text.length>state.settings.maxCopy))throw new Error("Approve the supplier and check the ad copy limit before publishing.");
+      if(v.status==="published"&&(s.status!=="approved"||adCharacterCount(c.text)>AD_MESSAGE_LIMIT))throw new Error("Approve the supplier and check the ad copy limit before publishing.");
       c.status=v.status;message=`${c.name} ${v.status==="published"?"approved":v.status}.`;break;
     }
     case "record_payment":{
@@ -133,7 +133,7 @@ export function applyAction(previous:Network, action:string, input:unknown, acto
       if(!s)throw new Error("Supplier not found.");s.billingStatus=v.status;message=`${s.name} billing marked ${v.status.replace("_"," ")}.`;break;
     }
     case "save_settings":{
-      const v=z.object({name,maxCopy:z.number().int().min(60).max(120),speed:z.number().int().min(20).max(80),paused:z.boolean(),showSamples:z.boolean(),policy:z.string().trim().min(50).max(5000)}).parse(input);
+      const v=z.object({name,maxCopy:z.literal(AD_MESSAGE_LIMIT),speed:z.number().int().min(20).max(80),paused:z.boolean(),showSamples:z.boolean(),policy:z.string().trim().min(50).max(5000)}).parse(input);
       state.settings={...previous.settings,...v,policyVersion:v.policy===previous.settings.policy?previous.settings.policyVersion:`${today()}.${crypto.randomUUID().slice(0,8)}`};
       message="Network settings saved.";break;
     }

@@ -1,3 +1,5 @@
+import {AD_MESSAGE_LIMIT,adCharacterCount,supplierAdvertisingName} from "./supplier-advertising.mjs";
+
 export type Country = "CA" | "US";
 export type Audience = "owner" | "admin" | "staff";
 export type Application = {
@@ -7,7 +9,7 @@ export type Application = {
 };
 export type Package = {id:string; name:string; description:string; maxApps:number; cad:number; usd:number; enabled:boolean; checkoutCad:string; checkoutUsd:string; billingInterval?:"monthly"|"annual"; royaltyBps?:number; sourceCurrency?:"CAD"|"USD"; staticAllowed?:boolean; sourceAppId?:string; supplierId?:string; sourcePlanId?:string; publicOffer?:boolean; campaignRates?:{configured:boolean;ticker:number;premium:number;premiumFree:boolean;hubTicker:number;hubStatic:number};campaignCheckout?:{ticker:string;premium:string;hubTicker:string;hubStatic:string};benefits?:string[]};
 export type Supplier = {
-  id:string; name:string; contact:string; email:string; website:string; category:string;
+  id:string; name:string; advertisingName?:string; contact:string; email:string; website:string; category:string;
   countries:Country[]; status:"pending"|"approved"|"suspended"|"rejected"|"more_info_requested";
   accountStatus?:"active"|"hold"|"cancelled"|"deleted"; accountReason?:string; accountUpdatedAt?:string;
   sourceProject?:string; sourceSupplierId?:string; sourceAccountId?:string; paidThroughAt?:string;
@@ -56,7 +58,7 @@ export function initialNetwork():Network {
     suppliers:[supplier("sup-maple","Maple Learning Co.","Jordan Lee","jordan@maple.example","Educational supplies",["CA"],"bundle"),supplier("sup-bright","BrightStart Furnishings","Taylor Morgan","taylor@bright.example","Furniture & equipment",["CA","US"],"network"),supplier("sup-care","CareWise Training","Alex Parker","alex@carewise.example","Training & consulting",["US"],"bundle"),supplier("sup-play","PlaySpace Outdoors","Casey Brown","casey@playspace.example","Playgrounds",["CA","US"],"network","pending")],
     campaigns:[campaign("ad-maple","sup-maple","Fall learning essentials","Save 15% on classroom learning kits. Canada-wide delivery.","CA"),campaign("ad-bright-ca","sup-bright","Classroom refresh · Canada","Child care furniture bundles from CAD $499. Explore our range.","CA"),campaign("ad-care","sup-care","Staff training offer","First aid refresher courses from USD $59 per person.","US"),campaign("ad-bright-us","sup-bright","Classroom refresh · USA","Save 10% on classroom furniture. Shipping across the USA.","US"),campaign("ad-play","sup-play","Playground planning","Free playground planning consultation for child care owners.","CA","review")],
     payments:[],activity:[{id:"welcome",text:"Your advertising network is ready to configure.",date:now}],
-    settings:{name:"SAS · Supplier Advertising System",maxCopy:100,speed:40,paused:false,showSamples:true,policy:INITIAL_POLICY,policyVersion:POLICY_VERSION},
+    settings:{name:"SAS · Supplier Advertising System",maxCopy:AD_MESSAGE_LIMIT,speed:40,paused:false,showSamples:true,policy:INITIAL_POLICY,policyVersion:POLICY_VERSION},
   };
 }
 export function eligibleAds(state:Network,opts:{appId:string;country?:Country;audience?:Audience;placement?:string;region?:string;hubId?:string;preview?:boolean;date?:string;now?:string}):Campaign[]{
@@ -68,6 +70,7 @@ export function eligibleAds(state:Network,opts:{appId:string;country?:Country;au
     if(!s||!p?.enabled||s.status!=="approved"||(s.accountStatus??"active")!=="active"||s.billingStatus!=="active"||!s.paidUntil||s.paidUntil<date)return false;
     if((s.paidThroughAt&&Date.parse(s.paidThroughAt)<=Date.parse(opts.now??new Date().toISOString()))||(c.expiresAt&&Date.parse(c.expiresAt)<=Date.parse(opts.now??new Date().toISOString())))return false;
     if(c.appIds.includes("owners")&&p.sourceAppId==="owners"&&c.paymentStatus!=="paid"&&c.paymentStatus!=="waived")return false;
+    if(adCharacterCount(c.text)>AD_MESSAGE_LIMIT)return false;
     if(c.status!=="published"||c.start>date||c.end<date||c.placement!==placement||(p.maxApps<99&&!c.appIds.includes(app.id)))return false;
     if(c.appIds.length>p.maxApps)return false;
     if(c.hubId&&(c.hubId!==opts.hubId||!c.appIds.includes(app.id)))return false;
@@ -77,5 +80,5 @@ export function eligibleAds(state:Network,opts:{appId:string;country?:Country;au
     if((c.sample||s.sample)&&!opts.preview)return false; return true;
   });
 }
-export function deliveryAd(c:Campaign,state:Network){const supplier=state.suppliers.find(s=>s.id===c.supplierId);return {id:c.id,supplierId:c.supplierId,supplier:supplier?.name??"Supplier",category:supplier?.category??"",name:c.name,text:c.text,url:c.url,country:c.country,currency:c.currency,placement:c.placement,hubId:c.hubId??"",tickerSpeed:c.tickerSpeed??"normal",sourceProject:c.sourceProject??"",sourceAdId:c.sourceAdId??"",sourceSupplierId:supplier?.sourceSupplierId??"",sample:c.sample};}
-export function publicState(state:Network):Network{return {...state,apps:state.apps.map(({integrationHash,...app})=>({...app,hasKey:!!integrationHash}))};}
+export function deliveryAd(c:Campaign,state:Network){const supplier=state.suppliers.find(s=>s.id===c.supplierId);return {id:c.id,supplierId:c.supplierId,supplier:supplierAdvertisingName(supplier),category:supplier?.category??"",text:c.text,url:c.url,country:c.country,currency:c.currency,placement:c.placement,hubId:c.hubId??"",tickerSpeed:c.tickerSpeed??"normal",sourceProject:c.sourceProject??"",sourceAdId:c.sourceAdId??"",sourceSupplierId:supplier?.sourceSupplierId??"",sample:c.sample};}
+export function publicState(state:Network):Network{return {...state,settings:{...state.settings,maxCopy:AD_MESSAGE_LIMIT},apps:state.apps.map(({integrationHash,...app})=>({...app,hasKey:!!integrationHash}))};}

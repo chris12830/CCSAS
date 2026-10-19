@@ -36,3 +36,22 @@ test("imported recurring timestamp prevents early receipts on the same calendar 
  value.workspace.recurring[0].sourceNextDueAt="2026-10-11T20:00:00Z";
  assert.throws(()=>act(value,"recurring_payment",{serviceId:value.workspace.recurring[0].id,reference:"too-early"}),/not due/);
 });
+
+test("notification acknowledgements are recipient-owned, persistent, and independent of email delivery",()=>{
+ const value=fixture();value.workspace.notices=[
+  {id:"read-me",supplierId:"a",subject:"Application update",status:"pending_setup",createdAt:"2026-10-10"},
+  {id:"arrived-later",supplierId:"a",subject:"A newer update",status:"queued",createdAt:"2026-10-11"},
+  {id:"private-other",supplierId:"b",subject:"Other supplier update",status:"sent",createdAt:"2026-10-10"}
+ ];
+ const next=act(value,"read_notifications",{notificationIds:["read-me"]});
+ assert.ok(next.workspace.notices[0].readAt);assert.equal(next.workspace.notices[0].status,"pending_setup");
+ assert.equal(next.workspace.notices[1].readAt,undefined);assert.equal(next.workspace.notices[2].readAt,undefined);
+ assert.equal(value.workspace.notices[0].readAt,undefined);
+ const repeated=act(next,"read_notifications",{notificationIds:["read-me"]});
+ assert.equal(repeated.workspace.notices[0].readAt,next.workspace.notices[0].readAt);
+ assert.throws(()=>act(value,"read_notifications",{notificationIds:["read-me"]},owner),e=>e.status===403);
+ assert.throws(()=>act(value,"read_notifications",{notificationIds:["read-me"]},other),e=>e.status===403);
+ assert.throws(()=>act(value,"read_notifications",{notificationIds:["read-me","private-other"]}),e=>e.status===404);
+ assert.throws(()=>act(value,"read_notifications",{notificationIds:[]}),e=>e.status===400);
+ assert.equal(value.workspace.notices.every(n=>!n.readAt),true);
+});
